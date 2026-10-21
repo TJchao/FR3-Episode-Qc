@@ -1,5 +1,7 @@
 # fr3-episode-qc
 
+[![CI](https://github.com/TJchao/FR3-Episode-Qc/actions/workflows/ci.yml/badge.svg)](https://github.com/TJchao/FR3-Episode-Qc/actions/workflows/ci.yml)
+
 Lightweight episode quality checks for FR3 robot-learning data.
 
 This project turns the episode QC workflow used in a Franka Research3 grasping project into a small, reproducible CLI and HTTP service. It checks field completeness, temporal consistency, action/state dimensions, camera latency, RGB/Depth frame consistency, and stores each QC result in SQLite.
@@ -10,16 +12,10 @@ The original robot dataset is not included. It contains lab data and is not appr
 
 Included:
 
-- Episode QC CLI
-- Batch QC with CSV and Parquet reports
-- FastAPI service
-- SQLite QC history
-- `status` and `dataset_version` filtering
-- DuckDB summaries over QC Parquet reports
-- Docker Compose deployment
-- GitHub Actions tests and Docker build validation
-- Synthetic valid and invalid episodes
-- Pytest coverage for QC rules and API behavior
+- Episode QC CLI and FastAPI service
+- SQLite QC history with `status` and `dataset_version` filtering
+- Batch QC reports in CSV and Parquet, plus DuckDB summaries
+- Docker Compose deployment and GitHub Actions CI
 
 Not included:
 
