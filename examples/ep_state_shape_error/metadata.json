@@ -1,0 +1,10 @@
+{
+  "episode_id": "ep_state_shape_error",
+  "frame_count": 128,
+  "fps": 10,
+  "state_dim": 8,
+  "action_dim": 7,
+  "rgb_frame_count": 128,
+  "depth_frame_count": 128,
+  "schema_version": "fr3-episode-v1"
+}

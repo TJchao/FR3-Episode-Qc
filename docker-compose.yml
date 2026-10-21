@@ -1,0 +1,14 @@
+services:
+  qc:
+    build: .
+    environment:
+      QC_ALLOWED_ROOT: /data
+      QC_DB_PATH: /app/db/qc_history.db
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./examples:/data:ro
+      - qc-db:/app/db
+
+volumes:
+  qc-db:
