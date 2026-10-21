@@ -271,3 +271,7 @@ GitHub Actions runs the Python tests and builds the Docker image on every push a
 - SQLite is intentionally minimal; it records report history without introducing an ORM or a separate service.
 - Parquet and DuckDB provide a small, local analytics path without introducing a distributed processing framework.
 - The repository is a small engineering demonstration, not a claim of large-scale robot-data infrastructure.
+
+## License
+
+This project is released under the [MIT License](LICENSE).
