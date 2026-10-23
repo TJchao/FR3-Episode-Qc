@@ -269,6 +269,7 @@ GitHub Actions runs the Python tests and builds the Docker image on every push a
 - Paths are resolved before access and constrained to an allowed root.
 - NPZ loading disables pickle for safety.
 - SQLite is intentionally minimal; it records report history without introducing an ORM or a separate service.
+- SQLite is suitable for this single-service, small-batch laboratory workflow. Under many concurrent writers, its database-level write lock can become a bottleneck; a production multi-worker deployment would use PostgreSQL or another external database service.
 - Parquet and DuckDB provide a small, local analytics path without introducing a distributed processing framework.
 - The repository is a small engineering demonstration, not a claim of large-scale robot-data infrastructure.
 
