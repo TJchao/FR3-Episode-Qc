@@ -25,6 +25,16 @@ def summarize_qc_results(parquet_path: Path) -> dict[str, Any]:
         [str(path)],
     ).fetchall()
 
+    severity_rows = connection.execute(
+        """
+        SELECT severity, count(*)::INTEGER AS count
+        FROM read_parquet(?)
+        GROUP BY severity
+        ORDER BY severity
+        """,
+        [str(path)],
+    ).fetchall()
+
     error_rows = connection.execute(
         """
         SELECT error_type, count(*)::INTEGER AS count
@@ -66,11 +76,13 @@ def summarize_qc_results(parquet_path: Path) -> dict[str, Any]:
     ).fetchall()
 
     status_counts = {status: count for status, count in status_rows}
+    severity_counts = {severity: count for severity, count in severity_rows}
     total_episodes = sum(status_counts.values())
 
     return {
         "total_episodes": total_episodes,
         "status_counts": status_counts,
+        "severity_counts": severity_counts,
         "error_type_counts": {
             error_type: count for error_type, count in error_rows
         },

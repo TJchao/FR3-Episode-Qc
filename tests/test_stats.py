@@ -25,6 +25,12 @@ def test_summarize_qc_results(tmp_path: Path) -> None:
 
     assert summary["total_episodes"] == 15
     assert summary["status_counts"] == {"failed": 14, "passed": 1}
+    assert summary["severity_counts"] == {
+        "fatal": 10,
+        "none": 1,
+        "repairable": 3,
+        "warning": 1,
+    }
     assert summary["error_type_counts"]["camera_age_p95_exceeded"] == 1
     assert summary["dataset_version_counts"] == {"synthetic-v1": 15}
 

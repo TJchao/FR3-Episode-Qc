@@ -143,6 +143,29 @@ def test_runs_filters_by_status_and_dataset_version(
     assert [run["episode_id"] for run in failed_v2.json()] == ["ep_nan_value"]
 
 
+def test_runs_filters_by_severity(client: TestClient) -> None:
+    client.post(
+        "/qc",
+        json={"episode_path": str(EXAMPLES_ROOT / "ep_valid")},
+    )
+    client.post(
+        "/qc",
+        json={"episode_path": str(EXAMPLES_ROOT / "ep_camera_age_p95")},
+    )
+    client.post(
+        "/qc",
+        json={"episode_path": str(EXAMPLES_ROOT / "ep_nan_value")},
+    )
+
+    none = client.get("/runs", params={"severity": "none"})
+    warning = client.get("/runs", params={"severity": "warning"})
+    fatal = client.get("/runs", params={"severity": "fatal"})
+
+    assert [run["episode_id"] for run in none.json()] == ["ep_valid"]
+    assert [run["episode_id"] for run in warning.json()] == ["ep_camera_age_p95"]
+    assert [run["episode_id"] for run in fatal.json()] == ["ep_nan_value"]
+
+
 def test_runs_rejects_invalid_filter(client: TestClient) -> None:
     invalid_status = client.get("/runs", params={"status": "invalid"})
     empty_version = client.get("/runs", params={"dataset_version": " "})

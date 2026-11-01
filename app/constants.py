@@ -16,6 +16,14 @@ REQUIRED_NPZ_FIELDS = (
     "action",
 )
 
+# Reserved for future image repair. The current repair implementation does not
+# copy image frames; these timestamps only make the future alignment contract
+# explicit and remain optional for v1 episodes.
+OPTIONAL_NPZ_FIELDS = (
+    "rgb_timestamps_ns",
+    "depth_timestamps_ns",
+)
+
 REQUIRED_METADATA_FIELDS = (
     "episode_id",
     "frame_count",

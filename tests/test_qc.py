@@ -42,6 +42,8 @@ def test_valid_episode_passes_all_checks() -> None:
     assert report["camera_age_p95_ms"] is not None
     assert report["camera_age_p95_ms"] < 50.0
     assert report["episode_hash"].startswith("sha256:")
+    assert report["severity"] == "none"
+    assert report["error_details"] == []
 
 
 @pytest.mark.parametrize(
@@ -53,9 +55,33 @@ def test_invalid_episode_fails_for_expected_reason(
     expected_error: str,
 ) -> None:
     report = check_episode(EXAMPLES_ROOT / episode_name)
+    if episode_name == "ep_camera_age_p95":
+        expected_severity = "warning"
+    elif episode_name in {
+        "ep_frame_count_mismatch",
+        "ep_rgb_count_mismatch",
+        "ep_depth_count_mismatch",
+    }:
+        expected_severity = "repairable"
+    else:
+        expected_severity = "fatal"
 
     assert report["status"] == "failed"
     assert any(expected_error in error for error in report["errors"])
+    assert report["severity"] == expected_severity
+    assert all(
+        detail["severity"] == expected_severity
+        for detail in report["error_details"]
+    )
+
+
+def test_camera_age_failure_is_a_warning_below_100ms() -> None:
+    report = check_episode(EXAMPLES_ROOT / "ep_camera_age_p95")
+
+    assert report["status"] == "failed"
+    assert report["severity"] == "warning"
+    assert report["error_details"][0]["code"] == "camera_age_p95_exceeded"
+    assert report["error_details"][0]["severity"] == "warning"
 
 
 def test_allowed_root_rejects_outside_path(tmp_path: Path) -> None:

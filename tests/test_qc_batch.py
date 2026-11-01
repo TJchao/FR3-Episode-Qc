@@ -29,6 +29,12 @@ def test_batch_qc_writes_csv_and_parquet_reports(tmp_path: Path) -> None:
     assert summary["passed"] == 1
     assert summary["failed"] == 14
     assert summary["pass_rate"] == round(1 / 15, 4)
+    assert summary["severity_counts"] == {
+        "fatal": 10,
+        "none": 1,
+        "repairable": 3,
+        "warning": 1,
+    }
     assert summary["error_type_counts"]["camera_age_p95_exceeded"] == 1
     assert summary["error_type_counts"]["missing_metadata"] == 1
     assert csv_output.is_file()
@@ -41,6 +47,7 @@ def test_batch_qc_writes_csv_and_parquet_reports(tmp_path: Path) -> None:
         }
 
     assert rows["ep_valid"]["status"] == "passed"
+    assert rows["ep_valid"]["severity"] == "none"
     assert rows["ep_valid"]["error_types"] == ""
     assert rows["ep_camera_age_p95"]["error_types"] == "camera_age_p95_exceeded"
     assert rows["ep_valid"]["dataset_version"] == "synthetic-v1"
@@ -51,6 +58,7 @@ def test_batch_qc_writes_csv_and_parquet_reports(tmp_path: Path) -> None:
     assert set(table.column_names) >= {
         "episode_id",
         "status",
+        "severity",
         "error_types",
         "camera_age_p95_ms",
         "episode_hash",
@@ -92,6 +100,7 @@ def test_build_record_deduplicates_error_types() -> None:
 
     assert record["error_types"] == "nan_or_inf"
     assert record["error_count"] == 2
+    assert record["severity"] == "fatal"
 
 
 def test_classify_unknown_error_is_explicit() -> None:

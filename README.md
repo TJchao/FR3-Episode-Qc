@@ -13,6 +13,7 @@ The original robot dataset is not included. It contains lab data and is not appr
 Included:
 
 - Episode QC CLI and FastAPI service
+- Error severity classification and conservative action-frame repair
 - SQLite QC history with `status` and `dataset_version` filtering
 - Batch QC reports in CSV and Parquet, plus DuckDB summaries
 - Docker Compose deployment and GitHub Actions CI
@@ -44,6 +45,15 @@ episode/
 | `camera_age_ms` | `(N,)` | Camera frame age at policy/control time |
 | `state` | `(N, 8)` | Robot state used by the policy |
 | `action` | `(N, 7)` | Robot action command |
+
+Optional fields reserved for future image repair:
+
+| Field | Shape | Description |
+| --- | --- | --- |
+| `rgb_timestamps_ns` | `(N,)` | Acquisition timestamps for RGB frames |
+| `depth_timestamps_ns` | `(N,)` | Acquisition timestamps for Depth frames |
+
+The current repair implementation does not copy or synthesize image frames. These fields document the timestamp contract that a future nearest-frame image repair would use.
 
 Required `metadata.json` fields:
 
@@ -84,6 +94,8 @@ The report includes:
   "status": "passed",
   "errors": [],
   "warnings": [],
+  "error_details": [],
+  "severity": "none",
   "frame_count": 128,
   "camera_age_p95_ms": 31.917,
   "episode_hash": "sha256:..."
@@ -91,6 +103,16 @@ The report includes:
 ```
 
 `episode_hash` is a combined SHA-256 hash of `frames.npz` and `metadata.json`, allowing the same episode content to be recognized across QC runs.
+
+### Severity Classification
+
+Each error receives a stable code and one of three severity levels:
+
+- `fatal`: schema, shape, non-finite value, timestamp ordering, or path errors that make an episode unsafe for training.
+- `repairable`: all-NaN action rows, or frame/image count mismatches that require controlled repair or manual review.
+- `warning`: camera-age P95 between 50 and 100 ms. The episode still fails, but the issue is less severe than a schema or timestamp break.
+
+The overall `severity` is the highest severity present. A passed episode has `severity: "none"`.
 
 ## Architecture
 
@@ -105,6 +127,10 @@ flowchart LR
     H --> I[CSV report]
     H --> J[Parquet report]
     J --> K[DuckDB summary]
+    A --> L[Repair CLI]
+    L --> M[.repaired parts]
+    L --> N[repair_manifest.json]
+    M --> B
     F[Docker Compose] --> E
     G[Synthetic examples] --> A
 ```
@@ -169,6 +195,26 @@ python -m app.qc_batch examples \
 
 The batch command prints the number of checked, passed, and failed episodes plus a structured count of each error type. Add `--fail-on-error` when it is used as a pipeline gate.
 
+## Conservative Repair
+
+The repair CLI handles one narrow failure mode: an action row in which all seven dimensions are NaN. This represents a missing action label. Partial NaN, Inf, malformed action shapes, and missing image data are not repaired.
+
+```bash
+python -m app.repair path/to/episode
+```
+
+The source episode is read-only. Output is written to `<episode>.repaired/` and contains one or more `part_###` episode directories plus `repair_manifest.json`.
+
+Repair rules:
+
+- Missing action frames at the start or end are cropped.
+- A missing action frame in the middle splits the episode into two parts, avoiding a 200 ms timestamp hole being presented as two adjacent 100 ms steps.
+- No action or state values are interpolated.
+- Each repaired part is rerun through QC before the manifest is marked as passed.
+- The manifest records the source hash, repaired hashes, repair policy, dropped frame indices, timestamp deltas, and split points.
+
+A sanitized example manifest is available at [`examples/repair_manifest_sample.json`](examples/repair_manifest_sample.json).
+
 Summarize the Parquet report with DuckDB:
 
 ```bash
@@ -205,12 +251,13 @@ Read recent QC runs:
 curl http://127.0.0.1:8000/runs
 ```
 
-Filter runs by status or dataset version:
+Filter runs by status, severity, or dataset version:
 
 ```bash
 curl "http://127.0.0.1:8000/runs?status=failed"
 curl "http://127.0.0.1:8000/runs?dataset_version=synthetic-v1"
 curl "http://127.0.0.1:8000/runs?status=failed&dataset_version=synthetic-v1"
+curl "http://127.0.0.1:8000/runs?severity=repairable"
 ```
 
 Read one run:
@@ -253,6 +300,9 @@ The tests cover:
 
 - The valid synthetic episode
 - Each isolated invalid episode
+- Severity classification for fatal, repairable, and warning errors
+- Boundary cropping and middle splitting for all-NaN action rows
+- Repair manifests, source hashes, repaired hashes, and post-repair QC
 - Batch QC, structured error classification, CSV, and Parquet outputs
 - DuckDB summaries over generated Parquet reports
 - Path-root restrictions

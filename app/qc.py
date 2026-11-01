@@ -18,6 +18,11 @@ from app.constants import (
     SCHEMA_VERSION,
     STATE_DIM,
 )
+from app.errors import (
+    classify_error,
+    highest_severity,
+    severity_for_error,
+)
 
 
 class EpisodePathError(Exception):
@@ -215,6 +220,16 @@ def _validate_arrays(
         report["errors"].append("timestamp_s is not strictly increasing")
 
     for field in present_fields:
+        if field == "action" and arrays[field].ndim == 2:
+            missing_rows = np.all(np.isnan(arrays[field]), axis=1)
+            if bool(np.any(missing_rows)):
+                report["errors"].append(
+                    "action contains missing frames represented by all-NaN rows"
+                )
+            invalid_values = ~np.isfinite(arrays[field]) & ~missing_rows[:, None]
+            if bool(np.any(invalid_values)):
+                report["errors"].append(f"{field} contains NaN or Inf")
+            continue
         if not np.all(np.isfinite(arrays[field])):
             report["errors"].append(f"{field} contains NaN or Inf")
 
@@ -276,6 +291,8 @@ def check_episode(
         "status": "failed",
         "errors": [],
         "warnings": [],
+        "error_details": [],
+        "severity": "fatal",
         "frame_count": 0,
         "camera_age_p95_ms": None,
         "episode_hash": None,
@@ -304,6 +321,17 @@ def check_episode(
     if arrays is not None:
         _validate_arrays(arrays, metadata, report)
 
+    report["error_details"] = [
+        {
+            "code": classify_error(error),
+            "message": error,
+            "severity": severity_for_error(classify_error(error), report),
+        }
+        for error in report["errors"]
+    ]
+    report["severity"] = highest_severity(
+        [detail["severity"] for detail in report["error_details"]]
+    )
     report["status"] = "passed" if not report["errors"] else "failed"
     return report
 

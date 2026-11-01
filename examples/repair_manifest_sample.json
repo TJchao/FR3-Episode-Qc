@@ -1,0 +1,101 @@
+{
+  "schema_version": "fr3-repair-v1",
+  "created_at": "2026-11-01T13:44:00+00:00",
+  "source_episode_id": "ep_action_missing_middle",
+  "source_path": "examples/ep_action_missing_middle",
+  "source_hash": "sha256:7d61ea7fba592c64dac752039455bb3c42342af3a5cfb6ccfd3526f258a16651",
+  "repair_policy": "action_missing_crop_or_split_v1",
+  "repair_rules": [
+    "action_missing_boundary_crop",
+    "action_missing_middle_split"
+  ],
+  "constraints": {
+    "interpolation_allowed": false,
+    "source_modified": false,
+    "minimum_repaired_frames": 2,
+    "image_repair_implemented": false
+  },
+  "operations": [
+    {
+      "operation": "split",
+      "reason": "action_missing_middle",
+      "dropped_frame_indices": [
+        64
+      ],
+      "left_last_frame_index": 63,
+      "right_first_frame_index": 65,
+      "left_last_timestamp_s": 6.300000190734863,
+      "right_first_timestamp_s": 6.5,
+      "timestamp_gap_s": 0.19999980926513672
+    }
+  ],
+  "dropped_frames": [
+    {
+      "frame_index": 64,
+      "timestamp_s": 6.400000095367432,
+      "previous_frame_index": 63,
+      "previous_timestamp_s": 6.300000190734863,
+      "next_frame_index": 65,
+      "next_timestamp_s": 6.5,
+      "timestamp_delta_to_previous_s": 0.09999990463256836,
+      "timestamp_delta_to_next_s": 0.09999990463256836
+    }
+  ],
+  "split_points": [
+    {
+      "reason": "action_missing_middle",
+      "dropped_frame_indices": [
+        64
+      ],
+      "left_last_frame_index": 63,
+      "right_first_frame_index": 65,
+      "left_last_timestamp_s": 6.300000190734863,
+      "right_first_timestamp_s": 6.5,
+      "timestamp_gap_s": 0.19999980926513672
+    }
+  ],
+  "repaired_hashes": [
+    "sha256:e400efc6a4cd0bd3fea44f879fac2078ec3afb4682305ab25aadeddcd1c26d7f",
+    "sha256:91192351d9909b9eadfb7bf9d430ecb4f8b0450c6c7c64ce54c2f47f07cbdae6"
+  ],
+  "repaired_episodes": [
+    {
+      "episode_id": "ep_action_missing_middle_part_000",
+      "path": "examples/ep_action_missing_middle.repaired/part_000",
+      "episode_hash": "sha256:e400efc6a4cd0bd3fea44f879fac2078ec3afb4682305ab25aadeddcd1c26d7f",
+      "frame_count": 64,
+      "qc_report": {
+        "episode_id": "ep_action_missing_middle_part_000",
+        "status": "passed",
+        "errors": [],
+        "warnings": [],
+        "error_details": [],
+        "severity": "none",
+        "frame_count": 64,
+        "camera_age_p95_ms": 31.919,
+        "episode_hash": "sha256:e400efc6a4cd0bd3fea44f879fac2078ec3afb4682305ab25aadeddcd1c26d7f"
+      }
+    },
+    {
+      "episode_id": "ep_action_missing_middle_part_001",
+      "path": "examples/ep_action_missing_middle.repaired/part_001",
+      "episode_hash": "sha256:91192351d9909b9eadfb7bf9d430ecb4f8b0450c6c7c64ce54c2f47f07cbdae6",
+      "frame_count": 63,
+      "qc_report": {
+        "episode_id": "ep_action_missing_middle_part_001",
+        "status": "passed",
+        "errors": [],
+        "warnings": [],
+        "error_details": [],
+        "severity": "none",
+        "frame_count": 63,
+        "camera_age_p95_ms": 31.686,
+        "episode_hash": "sha256:91192351d9909b9eadfb7bf9d430ecb4f8b0450c6c7c64ce54c2f47f07cbdae6"
+      }
+    }
+  ],
+  "result": {
+    "status": "passed",
+    "episode_count": 2
+  }
+}

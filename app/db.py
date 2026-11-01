@@ -114,6 +114,7 @@ def insert_qc_run(
 def list_qc_runs(
     limit: int = 100,
     status: str | None = None,
+    severity: str | None = None,
     dataset_version: str | None = None,
     db_path: str | Path | None = None,
 ) -> list[dict[str, Any]]:
@@ -122,6 +123,10 @@ def list_qc_runs(
         raise ValueError("limit must be a positive integer")
     if status is not None and status not in {"passed", "failed"}:
         raise ValueError("status must be 'passed' or 'failed'")
+    if severity is not None and severity not in {"fatal", "repairable", "warning", "none"}:
+        raise ValueError(
+            "severity must be 'fatal', 'repairable', 'warning', or 'none'"
+        )
     if dataset_version is not None and not dataset_version.strip():
         raise ValueError("dataset_version must be a non-empty string")
 
@@ -130,6 +135,16 @@ def list_qc_runs(
     if status is not None:
         conditions.append("status = ?")
         parameters.append(status)
+    if severity is not None:
+        conditions.append(
+            """
+            COALESCE(
+                json_extract(report_json, '$.severity'),
+                CASE status WHEN 'passed' THEN 'none' ELSE 'fatal' END
+            ) = ?
+            """
+        )
+        parameters.append(severity)
     if dataset_version is not None:
         conditions.append("dataset_version = ?")
         parameters.append(dataset_version)

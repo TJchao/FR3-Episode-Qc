@@ -22,7 +22,7 @@ app = FastAPI(
         "Lightweight quality checks for FR3 robot episode data. "
         "Synthetic episodes are used because original robot data is not published."
     ),
-    version="0.1.0",
+    version="0.2.0",
 )
 
 
@@ -85,6 +85,9 @@ def run_qc(request: QCRequest) -> dict[str, object]:
 def read_runs(
     limit: int = Query(default=100, ge=1, le=1000),
     status: Literal["passed", "failed"] | None = Query(default=None),
+    severity: Literal["fatal", "repairable", "warning", "none"] | None = Query(
+        default=None
+    ),
     dataset_version: str | None = Query(
         default=None,
         min_length=1,
@@ -100,6 +103,7 @@ def read_runs(
     return list_qc_runs(
         limit=limit,
         status=status,
+        severity=severity,
         dataset_version=dataset_version,
     )
 
