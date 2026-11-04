@@ -22,7 +22,7 @@ app = FastAPI(
         "Lightweight quality checks for FR3 robot episode data. "
         "Synthetic episodes are used because original robot data is not published."
     ),
-    version="0.2.0",
+    version="0.3.0",
 )
 
 

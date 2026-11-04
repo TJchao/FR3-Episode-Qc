@@ -19,6 +19,28 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - run: pytest -q
+      - name: Generate demo release report and gate
+        run: |
+          python -m app.qc_batch examples \
+            --csv-output reports/qc_results.csv \
+            --parquet-output reports/qc_results.parquet \
+            --dataset-version ci-demo
+          python -m app.release report reports/qc_results.parquet --html
+          set +e
+          python -m app.release gate reports/qc_results.parquet \
+            --fail-on fatal \
+            --output reports/release_gate.json
+          gate_status=$?
+          set -e
+          test "$gate_status" -eq 1
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: qc-release-artifacts
+          path: |
+            reports/qc_report.md
+            reports/qc_report.html
+            reports/release_gate.json
 
   docker:
     runs-on: ubuntu-latest

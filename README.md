@@ -8,6 +8,8 @@ This project turns the episode QC workflow used in a Franka Research3 grasping p
 
 The original robot dataset is not included. It contains lab data and is not approved for publication. This repository uses deterministic synthetic episodes that exercise every QC rule.
 
+This tool performs offline episode QC only; it does not train policies, run simulations, or evaluate robot models. Model evaluation lives in separate tooling.
+
 ## Scope
 
 Included:
@@ -16,6 +18,7 @@ Included:
 - Error severity classification and conservative action-frame repair
 - SQLite QC history with `status` and `dataset_version` filtering
 - Batch QC reports in CSV and Parquet, plus DuckDB summaries
+- Dataset release report (Markdown/HTML) and a release gate with `--fail-on` severity
 - Docker Compose deployment and GitHub Actions CI
 
 Not included:
@@ -127,6 +130,8 @@ flowchart LR
     H --> I[CSV report]
     H --> J[Parquet report]
     J --> K[DuckDB summary]
+    J --> R[Release report: Markdown/HTML]
+    J --> G[Release gate: release_gate.json]
     A --> L[Repair CLI]
     L --> M[.repaired parts]
     L --> N[repair_manifest.json]
@@ -223,6 +228,33 @@ python -m app.stats reports/qc_results.parquet
 
 The summary includes status counts, error-type counts, camera-age statistics by status, and dataset-version counts.
 
+## Dataset Release
+
+Turn a batch QC output into a publishable dataset report and an explicit release decision. Both commands accept `qc_results.parquet` or the SQLite history database (`db/qc_history.db`). A source must resolve to one dataset version and one git commit; when SQLite contains multiple versions, pass `--dataset-version` to select the release snapshot. For a versioned history, the loader keeps the latest QC run per episode.
+
+```bash
+# Markdown report, plus a self-contained HTML page
+python -m app.release report reports/qc_results.parquet --html
+
+# Link repair manifests into the report (optional)
+python -m app.release report reports/qc_results.parquet \
+  --repair-manifest reports/repair_manifest.json
+```
+
+The report includes the total/passed/failed counts, pass rate, fatal/repairable/warning distribution, top error types, camera-age P50/P95/P99, frame-count statistics, a per-episode list of failed episodes, and linked repair manifests.
+
+![Dataset QC report](docs/qc_report_preview.png)
+
+The release gate decides whether a dataset version may enter training:
+
+```bash
+python -m app.release gate reports/qc_results.parquet \
+  --fail-on fatal --fail-on repairable \
+  --output reports/release_gate.json
+```
+
+`--fail-on` is repeatable; each listed severity blocks the release when present, and the default is `fatal`. The gate writes `release_gate.json` with `dataset_version`, source and release git commit, `passed`, severity `blocked_by`, lineage `blocking_reasons`, and `generated_at`. Empty input, mixed versions, mixed commits, lineage overrides that disagree with the source, and invalid severity values fail closed. It exits with code `1` when the release is blocked, so it can be used as a CI gate for dataset releases. CI uploads the generated report and gate as workflow artifacts.
+
 ## API
 
 Start the development server:
@@ -305,6 +337,8 @@ The tests cover:
 - Repair manifests, source hashes, repaired hashes, and post-repair QC
 - Batch QC, structured error classification, CSV, and Parquet outputs
 - DuckDB summaries over generated Parquet reports
+- Dataset release report (Markdown/HTML) and release gate thresholds
+- Release snapshots with unique dataset versions, git commits, and episode IDs
 - Path-root restrictions
 - API health and QC endpoints
 - API filtering by status and dataset version
