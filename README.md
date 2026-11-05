@@ -1,6 +1,8 @@
 # fr3-episode-qc
 
 [![CI](https://github.com/TJchao/FR3-Episode-Qc/actions/workflows/ci.yml/badge.svg)](https://github.com/TJchao/FR3-Episode-Qc/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/TJchao/FR3-Episode-Qc)](https://github.com/TJchao/FR3-Episode-Qc/releases)
+[![License](https://img.shields.io/github/license/TJchao/FR3-Episode-Qc)](LICENSE)
 
 Lightweight episode quality checks for FR3 robot-learning data.
 
