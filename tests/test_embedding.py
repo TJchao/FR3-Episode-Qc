@@ -60,6 +60,9 @@ def test_coverage_detects_relative_low_density_and_duplicate_candidates() -> Non
     }]
     assert summary["near_duplicate_candidate_pairs"] == 1
     assert summary["method"] == "handcrafted_visual_v1"
+    assert summary["pairwise_similarity"]["count"] == 3
+    assert summary["pairwise_similarity"]["max"] == 1.0
+    assert summary["closest_pair"]["episode_a"] == "ep0"
 
 
 def test_pca_projection_returns_two_dimensions() -> None:

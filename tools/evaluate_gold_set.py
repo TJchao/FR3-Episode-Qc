@@ -18,13 +18,15 @@ def _markdown(metrics: dict) -> str:
         f"Review completion: `{metrics['review_completion']}`",
         f"Precision: `{metrics['precision']}`",
         f"Recall: `{metrics['recall']}`",
-        f"FPR: `{metrics['fpr']}`",
+        f"FPR estimate: `{metrics['fpr_estimate']}`",
+        f"Recall: `{metrics['recall']}`",
         f"F1: `{metrics['f1']}`",
+        f"Recall/F1 null reason: `{metrics['recall_f1_null_reason']}`",
         "",
         "## Per Rule",
         "",
-        "| Rule | Evaluated | TP | FP | FN | TN | Precision | Recall | FPR | Automation coverage |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Rule | Evaluated | TP | FP | FN | TN | Precision | FPR estimate | Automation coverage |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for rule, row in metrics.get("per_rule", {}).items():
         matrix = row.get("confusion_matrix", {})
@@ -32,12 +34,12 @@ def _markdown(metrics: dict) -> str:
             f"| `{rule}` | {row.get('evaluated_rows', 0)} | "
             f"{matrix.get('tp', 0)} | {matrix.get('fp', 0)} | "
             f"{matrix.get('fn', 0)} | {matrix.get('tn', 0)} | "
-            f"{row.get('precision')} | {row.get('recall')} | "
-            f"{row.get('fpr')} | {row.get('automation_coverage')} |"
+            f"{row.get('precision')} | {row.get('fpr_estimate')} | "
+            f"{row.get('automation_coverage')} |"
         )
     lines.extend([
         "",
-        "Automation coverage is `1 - review candidates / sampled frames` under the current policy that every auto hit needs human review.",
+        "Automation coverage is `1 - review candidates / sampled frames` under the current policy that every auto hit needs human review. It is a review-work metric, not an accuracy claim. Recall and F1 remain null because this sampling design does not cover false negatives.",
         "",
     ])
     return "\n".join(lines)

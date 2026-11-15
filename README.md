@@ -136,7 +136,7 @@ python -m tools.evaluate_gold_set \
   --output-md reports/unitree/gold_set_metrics.md
 ```
 
-The evaluator reports precision, recall, FPR, F1, confusion matrices, review completion, and policy-based automation coverage. If human labels are absent, it intentionally returns null quality metrics rather than fabricating them.
+The evaluator reports precision, an FPR estimate, reviewed sample counts, review completion, and policy-based automation coverage. Recall and F1 remain null because the sampling design does not cover false negatives. If human labels are absent, precision and FPR are also null rather than fabricated.
 
 ### Embedding Coverage
 
@@ -168,6 +168,8 @@ python -m tools.profile_dataset path/to/lerobot_dataset \
   --gold-set-metrics reports/unitree/gold_set_metrics.json \
   --output-dir reports/unitree_profile
 ```
+
+The profile reports `rules_evaluated` and `rules_skipped`. A passing episode means that executable rules passed; rules whose required source field is missing are disclosed as skipped rather than treated as implicitly passed. The profile also reports low-dimensional, image, embedding, and gold-set coverage separately.
 
 Required `metadata.json` fields:
 

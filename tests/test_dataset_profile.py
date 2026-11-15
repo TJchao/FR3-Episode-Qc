@@ -27,6 +27,8 @@ def test_dataset_profile_summarizes_all_selected_episodes(
     assert profile["quality"]["frame_count"]["count"] == 2
     assert set(motions) == {"episode_000000", "episode_000001"}
     assert profile["motion"]["all_dimensions"]["velocity_p95"]["count"] == 2
+    assert profile["quality"]["rules_evaluated"] == 6
+    assert profile["quality"]["rules_skipped"]
 
 
 def test_dataset_profile_reports_missing_image_and_gold_set(
@@ -44,3 +46,5 @@ def test_dataset_profile_reports_missing_image_and_gold_set(
     assert profile["image"] == {"available": False}
     assert profile["embedding"] == {"available": False}
     assert profile["gold_set"]["requires_human_review"] is True
+    assert profile["motion"]["finite_difference_boundary"]["jerk_noise_floor"] is None
+    assert profile["motion"]["finite_difference_boundary"]["theoretical_noise_gain"] == 64.0

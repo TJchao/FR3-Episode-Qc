@@ -15,6 +15,8 @@
 - Added gold-set template construction and precision / recall / FPR evaluation.
 - Added dependency-free handcrafted visual embeddings, kNN coverage density, cross-episode duplicate candidates, and PCA visualization.
 - Added batch-level dataset profiling over low-dimensional QC, motion, sampled image metrics, embedding coverage, and gold-set status.
+- Added executable-rule versus skipped-rule disclosure, analysis-coverage counts, paired arm/hand motion comparison, finite-difference jerk boundaries, pairwise embedding similarity statistics, and census sampling for small image-rule hit sets.
+- Narrowed gold-set reporting to precision, FPR estimate, review completion, and automation coverage; recall and F1 remain null when false negatives are not covered by the sampling design.
 - Added tests for profiles, image boundaries, motion statistics, LeRobot loading, video decoding, and fatal-image release gating.
 
 ## v0.3.0 - 2026-11-04

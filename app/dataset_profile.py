@@ -58,7 +58,7 @@ def _optional_json(path: str | Path | None) -> dict[str, Any] | None:
     return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
 
 
-def _motion_summary(motions: dict[str, Any]) -> dict[str, Any]:
+def _motion_summary(motions: dict[str, Any], fps: float | None) -> dict[str, Any]:
     result: dict[str, Any] = {}
     metric_names = (
         "velocity_p50",
@@ -95,6 +95,50 @@ def _motion_summary(motions: dict[str, Any]) -> dict[str, Any]:
         (profile.get("state_unit") for profile in profiles if profile.get("state_unit")),
         "unknown",
     )
+    resolved_fps = float(fps or 0.0)
+    result["finite_difference_boundary"] = {
+        "differentiation_order": 3,
+        "fps": resolved_fps,
+        "theoretical_noise_gain": round(resolved_fps**3, 6) if resolved_fps else None,
+        "jerk_noise_floor": None,
+        "jerk_noise_floor_reason": (
+            "not estimated: no verified static segments or sensor noise model; "
+            "absolute jerk is not comparable across datasets"
+        ),
+        "interpretation": (
+            "Jerk is used only for within-dataset relative ranking because "
+            "third-order finite differencing amplifies noise."
+        ),
+    }
+    if "left_arm" in result["groups"] and "right_hand" in result["groups"]:
+        left_values = [
+            profile.get("groups", {}).get("left_arm", {}).get("velocity_p95")
+            for profile in profiles
+        ]
+        right_values = [
+            profile.get("groups", {}).get("right_hand", {}).get("velocity_p95")
+            for profile in profiles
+        ]
+        paired = [
+            (float(left), float(right))
+            for left, right in zip(left_values, right_values)
+            if left is not None and right is not None and np.isfinite(left) and np.isfinite(right)
+        ]
+        ratios = [right / left for left, right in paired if left > 1e-9]
+        result["group_comparison"] = {
+            "metric": "velocity_p95",
+            "left_group": "left_arm",
+            "right_group": "right_hand",
+            "episode_count": len(paired),
+            "right_hand_greater_count": sum(right > left for left, right in paired),
+            "paired_ratio_p50": (
+                round(float(np.percentile(ratios, 50)), 6) if ratios else None
+            ),
+            "boundary": (
+                "This compares the same episode across groups. It avoids comparing "
+                "separate maxima from different episodes."
+            ),
+        }
     return result
 
 
@@ -106,6 +150,8 @@ def _image_summary(
     if table is None:
         return {"available": False}
     result: dict[str, Any] = {"available": True, "sample_count": table.num_rows}
+    if "episode_id" in table.column_names:
+        result["episode_count"] = len(set(table["episode_id"].to_pylist()))
     for field in (
         "brightness_mean",
         "brightness_std",
@@ -125,6 +171,51 @@ def _image_summary(
         ).items()))
         result["rule_hit_rows"] = len(hits)
     return result
+
+
+def _rule_coverage(episodes: dict[int, Any]) -> dict[str, Any]:
+    """Report which low-dimensional rules were executable for this source format."""
+    array_fields: set[str] = set()
+    metadata_fields: set[str] = set()
+    for episode in episodes.values():
+        array_fields.update(episode.arrays)
+        metadata_fields.update(episode.metadata)
+
+    requirements = (
+        ("episode_length_metadata", "metadata", "expected_frame_count"),
+        ("timestamp_monotonic", "array", "timestamp_s"),
+        ("state_shape", "array", "state"),
+        ("state_finite", "array", "state"),
+        ("action_shape", "array", "action"),
+        ("action_finite", "array", "action"),
+        ("camera_age_p95", "array", "camera_age_ms"),
+        ("robot_time_monotonic", "array", "robot_time_ns"),
+        ("rgb_frame_count", "metadata", "rgb_frame_count"),
+        ("depth_frame_count", "metadata", "depth_frame_count"),
+    )
+    evaluated: list[str] = []
+    skipped: list[dict[str, str]] = []
+    for rule, scope, field_name in requirements:
+        available = (
+            field_name in array_fields if scope == "array"
+            else field_name in metadata_fields
+        )
+        if available:
+            evaluated.append(rule)
+        else:
+            skipped.append({
+                "rule": rule,
+                "reason": f"missing_field: {field_name}",
+            })
+    return {
+        "rules_evaluated": len(evaluated),
+        "evaluated_rules": evaluated,
+        "rules_skipped": skipped,
+        "interpretation": (
+            "Pass means all executable rules passed. Missing fields are skipped, "
+            "not implicitly passed."
+        ),
+    }
 
 
 def _profile_records(
@@ -154,6 +245,7 @@ def _profile_records(
         ) + 1
     selected = parse_episode_selection(episode_selection, total)
     episode_rows, episodes = iter_selected_episode_arrays(layout, selected)
+    rule_coverage = _rule_coverage(episodes)
 
     records: list[dict[str, Any]] = []
     motions: dict[str, Any] = {}
@@ -226,6 +318,7 @@ def _profile_records(
     return records, motions, {
         "inspect": inspect_report,
         "error_type_counts": dict(sorted(errors_by_rule.items())),
+        "rule_coverage": rule_coverage,
     }
 
 
@@ -249,6 +342,7 @@ def build_dataset_profile(
 
     embedding_summary = _optional_json(embedding_summary_path)
     gold_metrics = _optional_json(gold_set_metrics_path)
+    image_summary = _image_summary(image_metrics_path, image_hits_path)
     profile: dict[str, Any] = {
         "dataset": {
             "dir": str(Path(dataset_dir).resolve()),
@@ -263,12 +357,27 @@ def build_dataset_profile(
             "status_counts": dict(sorted(status_counts.items())),
             "severity_counts": dict(sorted(severity_counts.items())),
             "error_type_counts": low_dim["error_type_counts"],
+            "rules_evaluated": low_dim["rule_coverage"]["rules_evaluated"],
+            "rules_skipped": low_dim["rule_coverage"]["rules_skipped"],
+            "rule_coverage_interpretation": low_dim["rule_coverage"]["interpretation"],
             "frame_count": _values_summary(frame_counts),
             "duration_s": _values_summary(durations),
         },
-        "motion": _motion_summary(motions),
-        "image": _image_summary(image_metrics_path, image_hits_path),
+        "motion": _motion_summary(
+            motions,
+            fps=low_dim["inspect"].get("fps"),
+        ),
+        "image": image_summary,
         "embedding": embedding_summary or {"available": False},
         "gold_set": gold_metrics or {"available": False, "requires_human_review": True},
+        "coverage": {
+            "low_dimensional_episodes": len(records),
+            "image_episodes": image_summary.get("episode_count", 0),
+            "embedding_episodes": (
+                embedding_summary.get("episode_count", 0)
+                if embedding_summary else 0
+            ),
+            "gold_set_review_rows": gold_metrics.get("rows", 0) if gold_metrics else 0,
+        },
     }
     return profile, records, motions

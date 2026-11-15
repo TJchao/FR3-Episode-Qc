@@ -98,6 +98,12 @@ def compute_coverage(
     norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
     normalized = embeddings / np.maximum(norms, 1e-8)
     similarity = normalized @ normalized.T
+    upper_left, upper_right = np.triu_indices(count, k=1)
+    pairwise_similarities = similarity[upper_left, upper_right]
+    closest_offset = int(np.argmax(pairwise_similarities))
+    closest_left = int(upper_left[closest_offset])
+    closest_right = int(upper_right[closest_offset])
+    closest_similarity = float(pairwise_similarities[closest_offset])
     np.fill_diagonal(similarity, -np.inf)
     resolved_k = min(k, count - 1)
     nearest_indices = np.argsort(-similarity, axis=1)[:, :resolved_k]
@@ -151,6 +157,23 @@ def compute_coverage(
             row["is_relative_low_density_tail"] for row in rows
         ),
         "near_duplicate_candidate_pairs": len(pairs),
+        "pairwise_similarity": {
+            "count": int(len(pairwise_similarities)),
+            "min": round(float(np.min(pairwise_similarities)), 6),
+            "mean": round(float(np.mean(pairwise_similarities)), 6),
+            "p50": round(float(np.percentile(pairwise_similarities, 50)), 6),
+            "p90": round(float(np.percentile(pairwise_similarities, 90)), 6),
+            "max": round(closest_similarity, 6),
+        },
+        "closest_pair": {
+            "episode_a": episode_ids[closest_left],
+            "episode_b": episode_ids[closest_right],
+            "cosine_similarity": round(closest_similarity, 6),
+            "margin_below_duplicate_threshold": round(
+                near_duplicate_similarity - closest_similarity,
+                6,
+            ),
+        },
         "coverage_boundary": (
             "kNN distance is computed in the original handcrafted embedding space; "
             "PCA is visualization only."

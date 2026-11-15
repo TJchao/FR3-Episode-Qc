@@ -20,6 +20,12 @@ def main() -> int:
     parser.add_argument("--metadata", type=Path, required=True)
     parser.add_argument("--max-hits-per-rule", type=int, default=50)
     parser.add_argument("--max-controls-per-rule", type=int, default=50)
+    parser.add_argument(
+        "--census-threshold",
+        type=int,
+        default=30,
+        help="Use every auto hit for rules with fewer hits than this threshold.",
+    )
     parser.add_argument("--seed", type=int, default=7)
     args = parser.parse_args()
 
@@ -31,6 +37,7 @@ def main() -> int:
         hit_rows,
         max_hits_per_rule=args.max_hits_per_rule,
         max_controls_per_rule=args.max_controls_per_rule,
+        census_threshold=args.census_threshold,
         seed=args.seed,
     )
     write_gold_set(rows, metadata, args.output, args.metadata)

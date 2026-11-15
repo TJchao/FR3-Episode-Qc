@@ -27,10 +27,11 @@ def test_build_gold_set_includes_hit_and_control() -> None:
 
     assert len(rows) == 2
     assert {row["auto_hit"] for row in rows} == {True, False}
-    assert metadata["source_counts"]["image_blur"] == {
-        "source_frame_count": 4,
-        "source_auto_hit_count": 1,
-    }
+    source = metadata["source_counts"]["image_blur"]
+    assert source["source_frame_count"] == 4
+    assert source["source_auto_hit_count"] == 1
+    assert source["selected_auto_hit_count"] == 1
+    assert source["auto_hit_sampling"] == "census"
 
 
 def test_build_gold_set_round_robins_across_episodes() -> None:
@@ -56,6 +57,25 @@ def test_build_gold_set_round_robins_across_episodes() -> None:
         "ep0", "ep1", "ep2", "ep0", "ep1", "ep2",
     ]
 
+    sampled_rows, sampled_meta = build_gold_set(
+        metric_rows,
+        hit_rows,
+        max_hits_per_rule=6,
+        max_controls_per_rule=0,
+        census_threshold=12,
+    )
+    census_rows, census_meta = build_gold_set(
+        metric_rows,
+        hit_rows,
+        max_hits_per_rule=6,
+        max_controls_per_rule=0,
+        census_threshold=13,
+    )
+    assert len(sampled_rows) == 6
+    assert sampled_meta["source_counts"]["image_blur"]["auto_hit_sampling"] == "round_robin_sample"
+    assert len(census_rows) == 12
+    assert census_meta["source_counts"]["image_blur"]["auto_hit_sampling"] == "census"
+
 
 def test_gold_set_metrics_require_review() -> None:
     rows, metadata = build_gold_set(METRIC_ROWS, HIT_ROWS)
@@ -65,6 +85,9 @@ def test_gold_set_metrics_require_review() -> None:
     assert metrics["evaluated_rows"] == 0
     assert metrics["review_completion"] == 0
     assert metrics["precision"] is None
+    assert metrics["recall"] is None
+    assert metrics["f1"] is None
+    assert metrics["recall_f1_null_reason"] == "sampling design does not cover false negatives"
     assert metrics["per_rule"]["image_blur"]["automation_coverage"] == 0.75
 
 
@@ -84,11 +107,13 @@ def test_gold_set_metrics_compute_confusion_matrix() -> None:
     metrics = evaluate_gold_set(rows, metadata["source_counts"])
     rule = metrics["per_rule"]["image_blur"]
 
-    assert rule["confusion_matrix"] == {"tn": 3, "tp": 1}
+    assert rule["reviewed_sample_counts"] == {"tn": 3, "tp": 1}
     assert rule["precision"] == 1.0
-    assert rule["recall"] == 1.0
-    assert rule["fpr"] == 0.0
-    assert metrics["f1"] == 1.0
+    assert rule["recall"] is None
+    assert rule["fpr_estimate"] == 0.0
+    assert rule["f1"] is None
+    assert metrics["recall"] is None
+    assert metrics["f1"] is None
 
 
 def test_gold_set_metrics_handle_false_positive_and_miss() -> None:
@@ -110,9 +135,9 @@ def test_gold_set_metrics_handle_false_positive_and_miss() -> None:
     })
 
     metrics = evaluate_gold_set(rows)
-    matrix = metrics["confusion_matrix"]
+    matrix = metrics["reviewed_sample_counts"]
 
     assert matrix["fp"] >= 1
     assert matrix["fn"] >= 1
     assert metrics["precision"] < 1.0
-    assert metrics["recall"] < 1.0
+    assert metrics["recall"] is None

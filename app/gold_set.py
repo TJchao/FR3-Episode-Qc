@@ -61,6 +61,7 @@ def build_gold_set(
     *,
     max_hits_per_rule: int = 50,
     max_controls_per_rule: int = 50,
+    census_threshold: int = 30,
     seed: int = 7,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Create a review template with auto hits and deterministic controls."""
@@ -85,7 +86,8 @@ def build_gold_set(
             if (rule, str(row.get("episode_id")), int(row.get("frame_index", -1)))
             not in hit_keys
         ]
-        selected_hits = _round_robin(hits, max_hits_per_rule)
+        use_census = len(hits) < census_threshold
+        selected_hits = hits if use_census else _round_robin(hits, max_hits_per_rule)
         selected_controls = _round_robin(controls, max_controls_per_rule)
         for row in selected_hits:
             output.append({
@@ -114,6 +116,8 @@ def build_gold_set(
         source_counts[rule] = {
             "source_frame_count": len(metric_rows),
             "source_auto_hit_count": len(hits),
+            "selected_auto_hit_count": len(selected_hits),
+            "auto_hit_sampling": "census" if use_census else "round_robin_sample",
         }
 
     output.sort(key=lambda row: (
@@ -123,7 +127,11 @@ def build_gold_set(
         -int(bool(row["auto_hit"])),
     ))
     metadata = {
- "sampling": "round-robin by episode; equal controls up to the configured cap",
+        "sampling": (
+            "rules with fewer than 30 auto hits use hit census; larger rules and "
+            "controls use round-robin sampling by episode"
+        ),
+        "census_threshold": census_threshold,
         "rules": rules,
         "source_counts": source_counts,
         "rows": len(output),
@@ -177,11 +185,14 @@ def evaluate_gold_set(
             "evaluated_rows": sum(counts.values()),
             "ambiguous_or_unreviewed": ambiguous,
             "review_completion": _safe_ratio(sum(counts.values()), len(rule_rows)),
-            "confusion_matrix": dict(sorted(counts.items())),
+            "reviewed_sample_counts": dict(sorted(counts.items())),
             "precision": _safe_ratio(counts["tp"], counts["tp"] + counts["fp"]),
-            "recall": _safe_ratio(counts["tp"], counts["tp"] + counts["fn"]),
-            "fpr": _safe_ratio(counts["fp"], counts["fp"] + counts["tn"]),
+            "fpr_estimate": _safe_ratio(counts["fp"], counts["fp"] + counts["tn"]),
+            "recall": None,
             "f1": None,
+            "recall_f1_null_reason": (
+                "sampling design does not cover false negatives"
+            ),
             "source_frame_count": source_frames or None,
             "source_auto_hit_count": source_hits or None,
             "automation_coverage": None,
@@ -189,16 +200,12 @@ def evaluate_gold_set(
                 "1 - review candidates / sampled frames; assumes every auto hit needs review"
             ),
         }
-        precision = result["precision"]
-        recall = result["recall"]
-        if precision is not None and recall is not None and precision + recall > 0:
-            result["f1"] = round(2 * precision * recall / (precision + recall), 6)
         if source_frames:
             result["automation_coverage"] = round(1 - source_hits / source_frames, 6)
         per_rule[rule] = result
 
     overall_precision = _safe_ratio(all_counts["tp"], all_counts["tp"] + all_counts["fp"])
-    overall_recall = _safe_ratio(all_counts["tp"], all_counts["tp"] + all_counts["fn"])
+    null_reason = "sampling design does not cover false negatives"
     return {
         "available": sum(all_counts.values()) > 0,
         "requires_human_review": sum(all_counts.values()) == 0,
@@ -206,16 +213,16 @@ def evaluate_gold_set(
         "evaluated_rows": sum(all_counts.values()),
         "ambiguous_or_unreviewed": len(rows) - sum(all_counts.values()),
         "review_completion": _safe_ratio(sum(all_counts.values()), len(rows)),
-        "confusion_matrix": dict(sorted(all_counts.items())),
+        "reviewed_sample_counts": dict(sorted(all_counts.items())),
         "precision": overall_precision,
-        "recall": overall_recall,
-        "fpr": _safe_ratio(all_counts["fp"], all_counts["fp"] + all_counts["tn"]),
-        "f1": (
-            round(2 * overall_precision * overall_recall / (overall_precision + overall_recall), 6)
-            if overall_precision is not None
-            and overall_recall is not None
-            and overall_precision + overall_recall > 0
-            else None
+        "fpr_estimate": _safe_ratio(all_counts["fp"], all_counts["fp"] + all_counts["tn"]),
+        "recall": None,
+        "f1": None,
+        "recall_f1_null_reason": null_reason,
+        "metric_boundary": (
+            "Precision is measured on reviewed auto hits. FPR is estimated from "
+            "reviewed controls. Recall and F1 are null because this sampling "
+            "design does not cover false negatives."
         ),
         "per_rule": per_rule,
     }

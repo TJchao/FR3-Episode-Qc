@@ -47,13 +47,56 @@ def _markdown(profile: dict) -> str:
         f"Error types: `{quality.get('error_type_counts')}`",
         f"Frame count: `{quality.get('frame_count')}`",
         f"Duration seconds: `{quality.get('duration_s')}`",
+    ]
+    rules_skipped = quality.get("rules_skipped", [])
+    lines.extend([
+        "",
+        "## Rule Coverage Boundary",
+        "",
+        f"Rules evaluated: `{quality.get('rules_evaluated')}`",
+        f"Rules skipped: `{len(rules_skipped)}`",
+    ])
+    for item in rules_skipped:
+        lines.append(f"- `{item.get('rule')}`: `{item.get('reason')}`")
+    lines.append(quality.get("rule_coverage_interpretation", ""))
+    lines.extend([
+        "",
+        "## Analysis Coverage",
+        "",
+        f"Low-dimensional episodes: `{profile.get('coverage', {}).get('low_dimensional_episodes')}`",
+        f"Image episodes: `{profile.get('coverage', {}).get('image_episodes')}`",
+        f"Embedding episodes: `{profile.get('coverage', {}).get('embedding_episodes')}`",
+        f"Gold-set review rows: `{profile.get('coverage', {}).get('gold_set_review_rows')}`",
+    ])
+    lines.extend([
         "",
         "## Motion",
         "",
         f"State unit: `{profile['motion'].get('state_unit')}`",
-    ]
+    ])
     for group, metrics in profile["motion"].get("groups", {}).items():
         lines.append(f"- `{group}` velocity_p95: `{metrics.get('velocity_p95')}`")
+    comparison = profile["motion"].get("group_comparison", {})
+    if comparison:
+        lines.extend([
+            "",
+            "### Group-Scale Finding",
+            "",
+            f"Right-hand velocity_p95 exceeds left-arm in `{comparison.get('right_hand_greater_count')}` / `{comparison.get('episode_count')}` episodes.",
+            f"Paired right-hand/left-arm ratio p50: `{comparison.get('paired_ratio_p50')}`",
+            comparison.get("boundary", ""),
+        ])
+    jerk = profile["motion"].get("finite_difference_boundary", {})
+    if jerk:
+        lines.extend([
+            "",
+            "### Jerk Boundary",
+            "",
+            f"Finite-difference noise gain at `{jerk.get('fps')}` Hz: `{jerk.get('theoretical_noise_gain')}`",
+            f"Jerk noise floor: `{jerk.get('jerk_noise_floor')}`",
+            jerk.get("jerk_noise_floor_reason", ""),
+            jerk.get("interpretation", ""),
+        ])
     image = profile.get("image", {})
     if image.get("available"):
         lines.extend([
@@ -73,6 +116,8 @@ def _markdown(profile: dict) -> str:
             f"Episode count: `{embedding.get('episode_count')}`",
             f"Relative low-density tail: `{embedding.get('relative_low_density_tail_count')}`",
             f"Near-duplicate candidate pairs: `{embedding.get('near_duplicate_candidate_pairs')}`",
+            f"Pairwise similarity range: `{embedding.get('pairwise_similarity', {}).get('min')}` to `{embedding.get('pairwise_similarity', {}).get('max')}`",
+            f"Closest pair: `{embedding.get('closest_pair')}`",
         ])
     gold = profile.get("gold_set", {})
     lines.extend([
@@ -84,7 +129,8 @@ def _markdown(profile: dict) -> str:
     if gold.get("precision") is not None:
         lines.append(f"Precision: `{gold.get('precision')}`")
         lines.append(f"Recall: `{gold.get('recall')}`")
-        lines.append(f"FPR: `{gold.get('fpr')}`")
+        lines.append(f"FPR estimate: `{gold.get('fpr_estimate')}`")
+        lines.append(f"Recall/F1 null reason: `{gold.get('recall_f1_null_reason')}`")
     else:
         lines.append("Human labels are not yet available; metrics are intentionally not claimed.")
     lines.append("")
