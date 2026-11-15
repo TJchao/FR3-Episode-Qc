@@ -17,6 +17,7 @@
 - Added batch-level dataset profiling over low-dimensional QC, motion, sampled image metrics, embedding coverage, and gold-set status.
 - Added executable-rule versus skipped-rule disclosure, analysis-coverage counts, paired arm/hand motion comparison, finite-difference jerk boundaries, pairwise embedding similarity statistics, and census sampling for small image-rule hit sets.
 - Narrowed gold-set reporting to precision, FPR estimate, review completion, and automation coverage; recall and F1 remain null when false negatives are not covered by the sampling design.
+- Added a reusable local HTML gold-set reviewer with previous/current frames, filters, notes, keyboard shortcuts, localStorage progress, CSV import, and CSV export.
 - Added tests for profiles, image boundaries, motion statistics, LeRobot loading, video decoding, and fatal-image release gating.
 
 ## v0.3.0 - 2026-11-04

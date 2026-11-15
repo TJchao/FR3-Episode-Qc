@@ -138,6 +138,20 @@ python -m tools.evaluate_gold_set \
 
 The evaluator reports precision, an FPR estimate, reviewed sample counts, review completion, and policy-based automation coverage. Recall and F1 remain null because the sampling design does not cover false negatives. If human labels are absent, precision and FPR are also null rather than fabricated.
 
+### Gold Set Review
+
+Generate a dependency-free local HTML reviewer with current and previous sampled frames:
+
+```bash
+python -m tools.build_gold_set_review \
+  --gold-set reports/unitree/gold_set.csv \
+  --image-metrics reports/unitree/image_metrics.parquet \
+  --image-hits reports/unitree/image_rule_hits.csv \
+  --output-dir reports/unitree/gold_set_review
+```
+
+Open `gold_set_review.html` in a browser. Blur rows are reviewed against the current frame; static-candidate and freeze rows require comparing the previous sampled frame with the current frame. Decisions persist in browser `localStorage`, and the **Export CSV** button writes `gold_set_reviewed.csv` with `human_label`, `is_true_positive`, and `note`. Keyboard shortcuts are `1` for rule成立, `2` for rule不成立, `3` for uncertain, and `n` / `p` for next / previous unreviewed item.
+
 ### Embedding Coverage
 
 The lightweight coverage prototype uses `handcrafted_visual_v1`: HSV color, DCT layout, gradient orientation, and pHash information are concatenated into a 216-D L2-normalized episode embedding. It does not require PyTorch or a downloaded vision model.
