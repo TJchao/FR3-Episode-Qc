@@ -42,7 +42,7 @@ ERROR_RULES = (
     ("image black or white frame", "image_black_white"),
     ("image exposure ratio exceeded", "image_exposure"),
     ("relative image blur threshold exceeded", "image_blur"),
-    ("sampled image pair is near-duplicate", "image_duplicate"),
+    ("sampled adjacent frames are visually static", "image_static_candidate"),
     ("sampled image freeze while state motion", "image_freeze"),
     ("image decoder unavailable", "image_decoder_unavailable"),
     ("LeRobot dataset is missing", "missing_lerobot_dataset"),
@@ -73,7 +73,7 @@ def severity_for_error(code: str, report: dict[str, Any]) -> str:
     if code in {
         "image_exposure",
         "image_blur",
-        "image_duplicate",
+        "image_static_candidate",
         "image_decoder_unavailable",
     }:
         return "warning"

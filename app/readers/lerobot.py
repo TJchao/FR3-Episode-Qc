@@ -1,4 +1,4 @@
-"""LeRobot v3 dataset inspection and episode loading."""
+"""LeRobot dataset inspection and episode loading."""
 
 from __future__ import annotations
 
@@ -82,6 +82,7 @@ def inspect_layout(layout: LeRobotLayout) -> dict[str, Any]:
 
     return {
         "dataset_dir": str(layout.root),
+        "codebase_version": layout.info.get("codebase_version"),
         "total_episodes": layout.info.get("total_episodes"),
         "total_frames": layout.info.get("total_frames"),
         "fps": layout.info.get("fps"),
@@ -150,6 +151,16 @@ def _tables_by_episode(
     return grouped
 
 
+def _feature_names(feature: dict[str, Any]) -> list[str]:
+    names = feature.get("names")
+    if not names:
+        return []
+    first = names[0] if isinstance(names, list) else names
+    if isinstance(first, list):
+        return [str(name) for name in first]
+    return [str(name) for name in names]
+
+
 def load_selected_episodes(
     layout: LeRobotLayout,
     selected: list[int],
@@ -171,6 +182,9 @@ def load_selected_episodes(
     state_dim = features.get("observation.state", {}).get("shape", [None])[-1]
     action_dim = features.get("action", {}).get("shape", [None])[-1]
     fps = layout.info.get("fps")
+    schema_version = str(layout.info.get("codebase_version") or "unknown")
+    state_names = _feature_names(features.get("observation.state", {}))
+    action_names = _feature_names(features.get("action", {}))
 
     for index, rows in data_rows.items():
         if not rows:
@@ -182,7 +196,8 @@ def load_selected_episodes(
                     "fps": fps,
                     "state_dim": state_dim,
                     "action_dim": action_dim,
-                    "schema_version": "lerobot-v3",
+                    "schema_version": schema_version,
+                    "expected_frame_count": episode_rows[index].get("length"),
                     "source": "lerobot",
                     "errors": [f"LeRobot feature is missing: data for episode {index}"],
                 },
@@ -218,7 +233,10 @@ def load_selected_episodes(
             "fps": fps,
             "state_dim": state_dim,
             "action_dim": action_dim,
-            "schema_version": "lerobot-v3",
+            "schema_version": schema_version,
+            "expected_frame_count": episode_rows[index].get("length"),
+            "state_names": state_names,
+            "action_names": action_names,
             "source": "lerobot",
         }
         episodes[index] = EpisodeData(

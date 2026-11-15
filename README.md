@@ -6,7 +6,7 @@
 
 Lightweight episode quality checks for FR3 robot-learning data.
 
-This project turns the episode QC workflow used in a Franka Research3 grasping project into a small, reproducible CLI and HTTP service. It checks field completeness, temporal consistency, action/state dimensions, camera latency, RGB/Depth frame consistency, and stores each QC result in SQLite. The P0 upgrade also adds robot profiles, a LeRobot v3 dataset inspector and reader, sampled image checks, and motion profiling.
+This project turns the episode QC workflow used in a Franka Research3 grasping project into a small, reproducible CLI and HTTP service. It checks field completeness, temporal consistency, action/state dimensions, camera latency, RGB/Depth frame consistency, and stores each QC result in SQLite. The P0 upgrade also adds robot profiles, a LeRobot dataset inspector and reader, sampled image checks, and motion profiling.
 
 The original robot dataset is not included. It contains lab data and is not approved for publication. This repository uses deterministic synthetic episodes that exercise every QC rule.
 
@@ -17,9 +17,9 @@ This tool performs offline episode QC only; it does not train policies, run simu
 Included:
 
 - Episode QC CLI and FastAPI service
-- Robot-specific profiles and LeRobot v3 dataset inspection
+- Robot-specific profiles and LeRobot dataset inspection
 - Error severity classification and conservative action-frame repair
-- Sampled image checks for black/white frames, exposure, relative blur, pHash duplicates, and freeze candidates
+- Sampled image checks for black/white frames, exposure, relative blur, adjacent-frame static candidates, and freeze candidates
 - Motion profiling for multi-dimensional humanoid state streams
 - SQLite QC history with `status` and `dataset_version` filtering
 - Batch QC reports in CSV and Parquet, plus DuckDB summaries
@@ -66,7 +66,7 @@ Optional fields reserved for future image repair:
 
 The current repair implementation does not copy or synthesize image frames. These fields document the timestamp contract that a future nearest-frame image repair would use.
 
-### LeRobot v3 Datasets
+### LeRobot Datasets
 
 The LeRobot path is dataset-level rather than a drop-in replacement for the FR3 episode format. Inspect the actual schema first:
 
@@ -94,13 +94,15 @@ inspect_report.json
 qc_results.csv
 qc_results.parquet
 image_metrics.parquet
-image_issues.csv
+image_rule_hits.csv
 image_review.csv
 motion_profile.json
 summary.json
 ```
 
-`image_review.csv` is a lightweight gold-set calibration input. Relative rules such as blur and pHash duplicates always select a tail from the current batch, so a reviewer should fill `human_label`, `is_true_positive`, and `note` before treating those thresholds as production-ready.
+`image_review.csv` is a lightweight gold-set calibration input. Relative rules such as blur and adjacent-frame pHash similarity always select a tail from the current batch, so a reviewer should fill `human_label`, `is_true_positive`, and `note` before treating those thresholds as production-ready.
+
+The `image_static_candidate` rule compares consecutive sampled frames, typically one second apart. It identifies visually static intervals, not cross-episode duplicate data. Cross-episode duplicate detection requires separate episode-level embeddings or representative-frame signatures.
 
 ### Video Decoding Boundary
 

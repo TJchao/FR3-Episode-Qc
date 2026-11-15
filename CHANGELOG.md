@@ -3,13 +3,15 @@
 ## Unreleased
 
 - Added robot-specific JSON profiles for FR3 and Unitree G1.
-- Added LeRobot v3 dataset inspection, selected-episode loading, and low-dimensional QC.
+- Added LeRobot dataset inspection, selected-episode loading, and low-dimensional QC.
 - Added seek-based sampled video decoding with an ffmpeg fallback.
 - Added black/white-frame, exposure, relative blur, pHash duplicate, and freeze-candidate checks.
 - Added multi-dimensional motion profiling without premature pass/fail classification.
 - Added image metrics and lightweight gold-set review output.
 - Added optional sampled-frame evidence output for human image-rule review.
 - Added a sanitized validation report for the official Unitree G1 Dex3 LeRobot dataset.
+- Renamed adjacent-frame pHash findings to `image_static_candidate` to avoid confusing static intervals with cross-episode duplicate detection.
+- Added image rule-hit versus unique-frame counts, pHash threshold sweep, grouped Unitree motion statistics, explicit unknown units, LeRobot schema version inspection, and episode-length mismatch checks.
 - Added tests for profiles, image boundaries, motion statistics, LeRobot loading, video decoding, and fatal-image release gating.
 
 ## v0.3.0 - 2026-11-04

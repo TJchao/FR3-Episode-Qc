@@ -89,6 +89,126 @@ The browser could reach GitHub and Hugging Face, but command-line tools initiall
 
 The real dataset was not committed; only the sanitized validation report is stored in `docs/unitree_g1_p0_validation.md`.
 
+### P0.1 correction: separate rule hits from confirmed defects
+
+The first real-video report used the phrase "11 image issues". That wording was too strong. The P5 blur rule necessarily selects a tail from the sampled batch, and adjacent pHash similarity identifies visually static intervals rather than cross-episode duplicates.
+
+The corrected report therefore uses:
+
+```text
+image_rule_hits = 11
+unique_flagged_frames = 9
+image_static_candidate instead of image_duplicate
+relative_static_tail_ratio instead of static_ratio
+```
+
+It also reports pHash Hamming thresholds 2, 4, and 6. On episode 0, the hit count changes from 2 to 7 to 8. This is threshold-calibration evidence, not a claim about true duplicates.
+
+### P0.1 correction: do not call adjacent similarity cross-episode duplicate detection
+
+The original rule ID `image_duplicate` was misleading. It only compares adjacent frames in the sampled sequence, typically one second apart:
+
+```text
+frame[t] vs frame[t+1]
+```
+
+Therefore seven hits mean "seven adjacent sampled pairs are visually static", not "seven episodes are duplicates". The rule was renamed to `image_static_candidate`. Cross-episode duplicate detection must compare episode-level representative frames or embeddings and remains future work.
+
+### P0.1 correction: report relative rules by construction
+
+The blur rule uses the fifth percentile of the current episode's sampled Laplacian scores. With 40 samples, two hits are expected by construction. They are review candidates, not confirmed blur defects.
+
+The corrected summary therefore reports:
+
+```text
+rule hits
+unique flagged frames
+per-rule hit counts
+rule interpretation
+```
+
+This distinction prevents a reviewer from mistaking a percentile artifact for a measured defect rate.
+
+### P0.1 correction: split Unitree motion groups and preserve unit uncertainty
+
+The public dataset provides joint names but does not explicitly declare the physical unit. The report therefore uses:
+
+```text
+state_unit: unknown
+velocity_unit: unknown/s
+acceleration_unit: unknown/s^2
+jerk_unit: unknown/s^3
+```
+
+It does not claim radians. Motion is also split into:
+
+```text
+left arm: indices 0-6
+right arm: indices 7-13
+left hand: indices 14-20
+right hand: indices 21-27
+```
+
+The all-dimension aggregate remains visible, but group statistics prevent arm motion from hiding or dominating finger behavior.
+
+### P0.1 correction: rename the relative static metric
+
+The old `static_ratio` compared frame motion with the episode's tenth percentile. By construction it selects approximately the lowest-motion tail, so calling it a physical static ratio was misleading. It is now `relative_static_tail_ratio`.
+
+A physical static ratio requires a profile-declared threshold in known state units.
+
+### P0.1 correction: derive LeRobot schema and validate declared length
+
+Two reader contract issues were fixed:
+
+```text
+1. schema_version now comes from meta/info.json codebase_version
+2. actual data-row count is compared with meta/episodes.length
+```
+
+The first implementation synthesized `frame_count` from the data rows and then compared metadata with itself, so it could not detect an episode-length mismatch. The corrected reader preserves the declared length as `expected_frame_count` and reports `lerobot_length_mismatch` as fatal.
+
+### P0.1 correction: make threshold behavior inspectable
+
+The adjacent-frame pHash threshold is now configurable through the robot profile and CLI. The report includes a 2/4/6 Hamming-threshold sweep:
+
+```text
+threshold 2: 2 hits
+threshold 4: 7 hits
+threshold 6: 8 hits
+```
+
+The default threshold 4 is provisional until a human-reviewed gold set measures false positives and misses.
+
+### P0.1 performance fixes
+
+Two performance issues were addressed before moving to full-frame analysis:
+
+```text
+1. freeze motion comparisons are precomputed once, removing repeated O(n²) work
+2. VideoImageSource reuses an OpenCV capture for monotonically increasing seeks
+```
+
+The source still falls back to ffmpeg and reopens the capture when seeking backward or after a decode failure. This avoids reopening the 497 MB AV1 file for every sampled frame while preserving robust decoding behavior.
+
+### P0.1 regression coverage
+
+The P0.1 test suite now covers:
+
+```text
+schema version inspection
+declared episode length mismatch
+adjacent-frame static-candidate naming
+rule-hit versus unique-frame counts
+pHash threshold sweep
+Unitree arm/hand motion grouping
+unknown unit labels
+monotonic video-source reuse
+CLI release gate blocking a fatal black-frame episode
+```
+
+Current verification: 77 tests passed.
+
 ### 7. OpenCV image writing failed on a non-ASCII Windows path
 
 `cv2.imwrite` failed when the temporary path contained Chinese characters. The fix uses `cv2.imencode` followed by `Path.write_bytes`, which avoids OpenCV's path encoding limitation while preserving the same JPEG output.

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
+import sys
 
 import cv2
 import numpy as np
@@ -116,11 +118,14 @@ def test_inspect_and_load_synthetic_lerobot_dataset(tmp_path: Path) -> None:
     layout = discover_layout(root)
     report = inspect_layout(layout)
     assert report["total_episodes"] == 2
+    assert report["codebase_version"] == "v3.0"
     assert report["state_shape"] == [3]
     assert "observation.state" in report["data_columns"]
 
     episode_rows, episodes, _ = load_selected_episodes(layout, [0, 1])
     assert episode_rows[0]["length"] == 4
+    assert episodes[0].metadata["schema_version"] == "v3.0"
+    assert episodes[0].metadata["expected_frame_count"] == 4
     assert episodes[0].arrays["state"].shape == (4, 3)
     assert episodes[1].arrays["action"].shape == (4, 2)
 
@@ -153,6 +158,31 @@ def test_qc_lerobot_outputs_low_dim_motion_and_report(tmp_path: Path) -> None:
     assert table["severity"].to_pylist() == ["none", "none"]
 
 
+def test_lerobot_episode_length_mismatch_is_fatal(tmp_path: Path) -> None:
+    root = tmp_path / "unitree"
+    _write_dataset(root)
+    episode_path = root / "meta" / "episodes" / "chunk-000" / "file-000.parquet"
+    table = pq.read_table(episode_path)
+    table = table.set_column(
+        table.schema.get_field_index("length"),
+        "length",
+        pa.array([5, 4], type=pa.int64()),
+    )
+    pq.write_table(table, episode_path)
+
+    summary = run_qc(
+        root,
+        profile_name="unitree_g1",
+        episode_selection="0",
+        camera_key=None,
+        output_dir=tmp_path / "reports",
+    )
+
+    assert summary["failed"] == 1
+    assert summary["error_type_counts"]["lerobot_length_mismatch"] == 1
+    assert summary["severity_counts"]["fatal"] == 1
+
+
 def test_video_source_reads_single_frame_without_loading_video(
     tmp_path: Path,
 ) -> None:
@@ -160,10 +190,13 @@ def test_video_source_reads_single_frame_without_loading_video(
     _write_dataset(root)
     video = next((root / "videos").rglob("*.mp4"))
 
-    frame = VideoImageSource(video).frame_at(0.0)
+    source = VideoImageSource(video)
+    frame = source.frame_at(0.0)
+    next_frame = source.frame_at(0.25)
 
     assert frame is not None
     assert frame.shape == (16, 16, 3)
+    assert next_frame is not None
 
 
 def test_black_frame_is_fatal_and_blocks_release_gate(tmp_path: Path) -> None:
@@ -187,8 +220,12 @@ def test_black_frame_is_fatal_and_blocks_release_gate(tmp_path: Path) -> None:
     assert summary["failed"] == 1
     assert summary["severity_counts"]["fatal"] == 1
     assert summary["image_samples"] >= 1
+    assert summary["image_rule_hits"] >= summary["unique_flagged_frames"]
+    assert "image_static_candidate" in summary["image_rule_hit_counts"]
+    assert set(summary["static_threshold_sweep"]) == {"2", "4", "6"}
     assert "image_freeze" in summary["error_type_counts"]
     assert (output / "image_review.csv").is_file()
+    assert (output / "image_rule_hits.csv").is_file()
     assert list((output / "evidence_frames" / "episode_000000").glob("*.jpg"))
 
     records = pq.read_table(output / "qc_results.parquet").to_pylist()
@@ -197,3 +234,51 @@ def test_black_frame_is_fatal_and_blocks_release_gate(tmp_path: Path) -> None:
     gate = evaluate_gate(records, fail_on={"fatal"})
     assert gate["passed"] is False
     assert gate["blocked_by"] == ["fatal"]
+
+
+def test_cli_gate_blocks_fatal_image_episode(tmp_path: Path) -> None:
+    root = tmp_path / "unitree"
+    _write_dataset(root)
+    qc_output = tmp_path / "cli-reports"
+    gate_output = tmp_path / "release_gate.json"
+
+    qc_result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "tools.qc_lerobot",
+            str(root),
+            "--episodes",
+            "0",
+            "--camera-key",
+            "observation.images.wrist",
+            "--sample-fps",
+            "4",
+            "--output",
+            str(qc_output),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert qc_result.returncode == 0, qc_result.stderr
+
+    gate_result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "app.release",
+            "gate",
+            str(qc_output / "qc_results.parquet"),
+            "--fail-on",
+            "fatal",
+            "--output",
+            str(gate_output),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert gate_result.returncode == 1
+    assert gate_output.is_file()
+    assert '"passed": false' in gate_output.read_text(encoding="utf-8").lower()

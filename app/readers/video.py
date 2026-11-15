@@ -27,16 +27,35 @@ class VideoImageSource:
         self.path = Path(path)
         self.width = width
         self.height = height
+        self._capture: cv2.VideoCapture | None = None
+        self._last_timestamp: float | None = None
+
+    def close(self) -> None:
+        if self._capture is not None:
+            self._capture.release()
+            self._capture = None
+            self._last_timestamp = None
+
+    def __del__(self) -> None:
+        self.close()
 
     def frame_at(self, timestamp_s: float) -> np.ndarray | None:
-        capture = cv2.VideoCapture(str(self.path))
-        try:
-            capture.set(cv2.CAP_PROP_POS_MSEC, max(0.0, timestamp_s) * 1000.0)
-            ok, frame = capture.read()
+        requested = max(0.0, timestamp_s)
+        if (
+            self._capture is None
+            or self._last_timestamp is None
+            or requested < self._last_timestamp
+        ):
+            self.close()
+            self._capture = cv2.VideoCapture(str(self.path))
+
+        if self._capture is not None:
+            self._capture.set(cv2.CAP_PROP_POS_MSEC, requested * 1000.0)
+            ok, frame = self._capture.read()
             if ok and frame is not None:
+                self._last_timestamp = requested
                 return frame
-        finally:
-            capture.release()
+            self.close()
         return self._ffmpeg_frame(timestamp_s)
 
     def _ffmpeg_frame(self, timestamp_s: float) -> np.ndarray | None:

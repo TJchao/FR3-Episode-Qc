@@ -84,7 +84,7 @@ def resolve_profile(metadata: dict[str, Any]) -> dict[str, Any]:
         # derived from info.json by the reader when this happens.
         loaded = {
             "robot_type": robot_type,
-            "schema_version": metadata.get("schema_version", "lerobot-v3"),
+            "schema_version": metadata.get("schema_version", "unknown"),
             "state_dim": None,
             "action_dim": None,
             "fps": metadata.get("fps"),

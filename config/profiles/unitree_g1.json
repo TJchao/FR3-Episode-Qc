@@ -1,16 +1,27 @@
 {
   "robot_type": "unitree_g1",
-  "schema_version": "lerobot-v3",
+  "schema_version": null,
   "state_dim": null,
   "action_dim": null,
   "fps": null,
   "camera_age_p95_limit_ms": null,
   "motion": {
     "enabled": true,
-    "indices": null
+    "indices": null,
+    "unit": null,
+    "groups": {
+      "left_arm": [0, 1, 2, 3, 4, 5, 6],
+      "right_arm": [7, 8, 9, 10, 11, 12, 13],
+      "left_hand": [14, 15, 16, 17, 18, 19, 20],
+      "right_hand": [21, 22, 23, 24, 25, 26, 27]
+    }
   },
   "image": {
     "enabled": true,
-    "sample_fps": 1.0
+    "sample_fps": 1.0,
+    "blur_percentile": 5.0,
+    "static_hamming": 4,
+    "freeze_hamming": 2,
+    "freeze_motion_quantile": 50.0
   }
 }

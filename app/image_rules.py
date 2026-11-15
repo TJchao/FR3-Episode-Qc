@@ -75,7 +75,7 @@ def evaluate_image_metrics(
     low_std: float = 5.0,
     exposure_ratio: float = 0.20,
     blur_percentile: float = 5.0,
-    duplicate_hamming: int = 4,
+    static_hamming: int = 4,
 ) -> list[dict[str, object]]:
     issues: list[dict[str, object]] = []
     if not metrics:
@@ -132,15 +132,15 @@ def evaluate_image_metrics(
 
     for left, right in zip(metrics[:-1], metrics[1:]):
         distance = hamming_distance(left.phash, right.phash)
-        if distance <= duplicate_hamming:
+        if distance <= static_hamming:
             issues.append({
-                "rule_id": "image_duplicate",
+                "rule_id": "image_static_candidate",
                 "severity": "warning",
                 "frame_index": right.frame_index,
                 "timestamp_s": right.timestamp_s,
                 "value": distance,
-                "threshold": duplicate_hamming,
-                "message": "sampled image pair is near-duplicate",
+                "threshold": static_hamming,
+                "message": "sampled adjacent frames are visually static",
             })
 
     return issues
@@ -162,8 +162,25 @@ def evaluate_freeze(
     if state.ndim != 2 or len(metrics) < 2:
         return []
 
-    issues: list[dict[str, object]] = []
     frame_indices = [metric.frame_index for metric in metrics]
+    comparable_motions: list[float] = []
+    for index in frame_indices[:-1]:
+        next_indices = [value for value in frame_indices if value > index]
+        if not next_indices:
+            continue
+        next_index = min(next_indices)
+        comparable_motions.append(float(np.linalg.norm(
+            state[next_index].astype(float) - state[index].astype(float)
+        )))
+    if not comparable_motions:
+        return []
+
+    threshold = max(
+        float(np.percentile(comparable_motions, motion_quantile)),
+        1e-8,
+    )
+
+    issues: list[dict[str, object]] = []
     for left, right in zip(metrics[:-1], metrics[1:]):
         if left.frame_index >= state.shape[0] or right.frame_index >= state.shape[0]:
             continue
@@ -172,18 +189,6 @@ def evaluate_freeze(
             state[right.frame_index].astype(float)
             - state[left.frame_index].astype(float)
         ))
-        comparable_motions = []
-        for index in frame_indices[:-1]:
-            next_indices = [value for value in frame_indices if value > index]
-            if not next_indices:
-                continue
-            next_index = min(next_indices)
-            comparable_motions.append(float(np.linalg.norm(
-                state[next_index].astype(float) - state[index].astype(float)
-            )))
-        if not comparable_motions:
-            continue
-        threshold = max(float(np.percentile(comparable_motions, motion_quantile)), 1e-8)
         if distance <= hamming_threshold and motion > threshold:
             issues.append({
                 "rule_id": "image_freeze",
