@@ -215,14 +215,14 @@ After P0.1, three batch-analysis capabilities were added.
 
 ### Gold set without fabricating labels
 
-The tool generates a balanced review queue from auto hits and deterministic controls. On episodes 0-9, sampled-image QC produced 363 frames and 148 rule hits. The gold-set template contains 124 rows: all 21 blur hits, all 23 freeze hits, 20 sampled static-candidate hits, and 20 controls per rule.
+The tool generates a balanced review queue from auto hits and deterministic controls. The initial 10-episode pilot produced 363 frames and 148 rule hits. It was then expanded to all 86 episodes covered by the locally available left-wrist video file, producing 2806 frames and 980 rule hits. The expanded gold-set template contains 120 rows: 20 round-robin hit samples and 20 controls for each rule.
 
 Because no human labels have been entered, precision and the FPR estimate are deliberately null. Recall and F1 remain null even after review because the sampling design does not cover false negatives. The tool reports policy-based automation coverage instead:
 
 ```text
-blur: 94.2149%
-freeze: 93.6639%
-static candidate: 71.3499%
+blur: 93.7634%
+freeze: 95.6878%
+static candidate: 75.6237%
 ```
 
 ### Dependency-free embedding coverage
