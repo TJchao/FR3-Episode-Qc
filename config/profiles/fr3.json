@@ -1,0 +1,16 @@
+{
+  "robot_type": "fr3",
+  "schema_version": "fr3-episode-v1",
+  "state_dim": 8,
+  "action_dim": 7,
+  "fps": 10,
+  "camera_age_p95_limit_ms": 50.0,
+  "motion": {
+    "enabled": true,
+    "indices": null
+  },
+  "image": {
+    "enabled": true,
+    "sample_fps": 1.0
+  }
+}

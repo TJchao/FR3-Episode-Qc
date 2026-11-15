@@ -1,0 +1,16 @@
+{
+  "robot_type": "unitree_g1",
+  "schema_version": "lerobot-v3",
+  "state_dim": null,
+  "action_dim": null,
+  "fps": null,
+  "camera_age_p95_limit_ms": null,
+  "motion": {
+    "enabled": true,
+    "indices": null
+  },
+  "image": {
+    "enabled": true,
+    "sample_fps": 1.0
+  }
+}

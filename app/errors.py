@@ -39,6 +39,15 @@ ERROR_RULES = (
     ("depth_frame_count", "depth_count_mismatch"),
     ("episode path is outside the allowed root", "path_outside_root"),
     ("episode path does not exist", "path_not_found"),
+    ("image black or white frame", "image_black_white"),
+    ("image exposure ratio exceeded", "image_exposure"),
+    ("relative image blur threshold exceeded", "image_blur"),
+    ("sampled image pair is near-duplicate", "image_duplicate"),
+    ("sampled image freeze while state motion", "image_freeze"),
+    ("image decoder unavailable", "image_decoder_unavailable"),
+    ("LeRobot dataset is missing", "missing_lerobot_dataset"),
+    ("LeRobot feature is missing", "missing_lerobot_feature"),
+    ("LeRobot episode length mismatch", "lerobot_length_mismatch"),
 )
 
 
@@ -57,8 +66,17 @@ def severity_for_error(code: str, report: dict[str, Any]) -> str:
         "frame_count_mismatch",
         "rgb_count_mismatch",
         "depth_count_mismatch",
+        "image_freeze",
     }:
         return "repairable"
+
+    if code in {
+        "image_exposure",
+        "image_blur",
+        "image_duplicate",
+        "image_decoder_unavailable",
+    }:
+        return "warning"
 
     if code == "camera_age_p95_exceeded":
         p95_ms = report.get("camera_age_p95_ms")

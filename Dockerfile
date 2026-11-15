@@ -6,10 +6,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 COPY requirements.txt ./
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir --requirement requirements.txt
 
 COPY app/ ./app/
+COPY config/ ./config/
 COPY scripts/ ./scripts/
+COPY tools/ ./tools/
 COPY tests/ ./tests/
 COPY README.md ./
 
