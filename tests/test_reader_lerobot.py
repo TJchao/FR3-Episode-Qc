@@ -180,6 +180,7 @@ def test_black_frame_is_fatal_and_blocks_release_gate(tmp_path: Path) -> None:
         dataset_version="synthetic-image-v1",
         git_commit="test",
         sample_fps=4.0,
+        save_evidence=True,
     )
 
     assert summary["checked_episodes"] == 1
@@ -188,6 +189,7 @@ def test_black_frame_is_fatal_and_blocks_release_gate(tmp_path: Path) -> None:
     assert summary["image_samples"] >= 1
     assert "image_freeze" in summary["error_type_counts"]
     assert (output / "image_review.csv").is_file()
+    assert list((output / "evidence_frames" / "episode_000000").glob("*.jpg"))
 
     records = pq.read_table(output / "qc_results.parquet").to_pylist()
     assert "image_black_white" in records[0]["error_types"].split(";")

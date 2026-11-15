@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import cv2
 import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -169,6 +170,7 @@ def _write_reports(
             "episode_id",
             "frame_index",
             "timestamp_s",
+            "evidence_path",
             "auto_label",
             "human_label",
             "is_true_positive",
@@ -183,6 +185,7 @@ def _write_reports(
                     "episode_id": issue.get("episode_id"),
                     "frame_index": issue.get("frame_index"),
                     "timestamp_s": issue.get("timestamp_s"),
+                    "evidence_path": issue.get("evidence_path"),
                     "auto_label": issue.get("message"),
                     "human_label": "",
                     "is_true_positive": "",
@@ -222,6 +225,7 @@ def run_qc(
     sample_fps: float = 1.0,
     dataset_version: str = "unversioned",
     git_commit: str = "unknown",
+    save_evidence: bool = False,
 ) -> dict[str, Any]:
     layout = discover_layout(dataset_dir)
     inspect_report = inspect_layout(layout)
@@ -259,6 +263,8 @@ def run_qc(
     image_rows: list[dict[str, Any]] = []
     issues: list[dict[str, Any]] = []
     motions: dict[str, Any] = {}
+    output_path = Path(output_dir).expanduser().resolve()
+    output_path.mkdir(parents=True, exist_ok=True)
 
     for episode_index in selected:
         episode = episodes[episode_index]
@@ -304,6 +310,13 @@ def run_qc(
             )
             offset = _video_offset(episode_rows[episode_index], camera_key)
             metrics = []
+            evidence_dir = (
+                output_path
+                / "evidence_frames"
+                / str(metadata.get("episode_id") or f"episode_{episode_index:06d}")
+            )
+            if save_evidence:
+                evidence_dir.mkdir(parents=True, exist_ok=True)
             for frame_index in sampled:
                 timestamp = float(arrays["timestamp_s"][frame_index]) if "timestamp_s" in arrays else frame_index
                 frame = source.frame_at(offset + timestamp)
@@ -312,6 +325,13 @@ def run_qc(
                     break
                 metric = image_metrics(gray(frame), frame_index, timestamp)
                 metrics.append(metric)
+                evidence_path = None
+                if save_evidence:
+                    evidence_path = evidence_dir / f"frame_{frame_index:08d}.jpg"
+                    encoded, buffer = cv2.imencode(".jpg", frame)
+                    if not encoded:
+                        raise OSError(f"cannot write image evidence frame: {evidence_path}")
+                    evidence_path.write_bytes(buffer.tobytes())
                 image_rows.append({
                     "episode_id": metadata.get("episode_id"),
                     "frame_index": metric.frame_index,
@@ -322,6 +342,7 @@ def run_qc(
                     "shadow_ratio": metric.shadow_ratio,
                     "laplacian_variance": metric.laplacian_variance,
                     "phash": metric.phash,
+                    "evidence_path": str(evidence_path) if evidence_path else None,
                 })
             episode_issues = evaluate_image_metrics(metrics)
             if "state" in arrays:
@@ -330,6 +351,15 @@ def run_qc(
                 errors.append(str(issue["message"]))
                 issue = dict(issue)
                 issue["episode_id"] = metadata.get("episode_id")
+                issue["evidence_path"] = next(
+                    (
+                        row["evidence_path"]
+                        for row in reversed(image_rows)
+                        if row["episode_id"] == issue["episode_id"]
+                        and row["frame_index"] == issue["frame_index"]
+                    ),
+                    None,
+                )
                 issues.append(issue)
 
         error_details = [
@@ -356,8 +386,6 @@ def run_qc(
             "created_at": "",
         })
 
-    output_path = Path(output_dir).expanduser().resolve()
-    output_path.mkdir(parents=True, exist_ok=True)
     (output_path / "inspect_report.json").write_text(
         json.dumps(inspect_report, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
@@ -385,6 +413,11 @@ def main() -> int:
     parser.add_argument("--episodes", default="0")
     parser.add_argument("--camera-key", default=None)
     parser.add_argument("--sample-fps", type=float, default=1.0)
+    parser.add_argument(
+        "--save-evidence",
+        action="store_true",
+        help="Save sampled image frames for human review.",
+    )
     parser.add_argument("--output", type=Path, default=Path("reports/lerobot_qc"))
     parser.add_argument("--dataset-version", default="unversioned")
     parser.add_argument("--git-commit", default="unknown")
@@ -399,6 +432,7 @@ def main() -> int:
         sample_fps=args.sample_fps,
         dataset_version=args.dataset_version,
         git_commit=args.git_commit,
+        save_evidence=args.save_evidence,
     )
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return 0

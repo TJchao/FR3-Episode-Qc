@@ -83,9 +83,15 @@ pytest -q -p no:cacheprovider --basetemp .tmp/pytest
 
 The parent `.tmp` directory must exist. This did not require changing test semantics.
 
-### 6. Public dataset download was blocked by the execution sandbox
+### 6. Public dataset access required an explicit terminal proxy
 
-The Hugging Face API request failed because outbound sockets were denied in the managed environment. Synthetic LeRobot fixtures and MP4 integration tests validate the reader and image pipeline. Running the same command on a real Unitree LeRobot subset is the next external validation step.
+The browser could reach GitHub and Hugging Face, but command-line tools initially bypassed the local proxy. Git and Python downloads were made explicit through `127.0.0.1:7890`. The official Unitree G1 Dex3 block-stacking subset was then downloaded and validated.
+
+The real dataset was not committed; only the sanitized validation report is stored in `docs/unitree_g1_p0_validation.md`.
+
+### 7. OpenCV image writing failed on a non-ASCII Windows path
+
+`cv2.imwrite` failed when the temporary path contained Chinese characters. The fix uses `cv2.imencode` followed by `Path.write_bytes`, which avoids OpenCV's path encoding limitation while preserving the same JPEG output.
 
 ## Verification
 
@@ -98,6 +104,10 @@ MP4 single-frame seek passed
 Black-frame episode produced fatal severity
 Release gate blocked the fatal episode
 Motion profile JSON was generated
+Official Unitree G1 dataset schema inspection passed
+Six real Unitree G1 episodes passed low-dimensional QC
+One real Unitree G1 wrist-camera episode was sampled at 1 fps
+40 evidence frames and 11 image-rule candidates were recorded
 ```
 
 ## Interview Phrasing

@@ -8,6 +8,8 @@
 - Added black/white-frame, exposure, relative blur, pHash duplicate, and freeze-candidate checks.
 - Added multi-dimensional motion profiling without premature pass/fail classification.
 - Added image metrics and lightweight gold-set review output.
+- Added optional sampled-frame evidence output for human image-rule review.
+- Added a sanitized validation report for the official Unitree G1 Dex3 LeRobot dataset.
 - Added tests for profiles, image boundaries, motion statistics, LeRobot loading, video decoding, and fatal-image release gating.
 
 ## v0.3.0 - 2026-11-04

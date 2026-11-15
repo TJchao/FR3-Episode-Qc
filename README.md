@@ -82,6 +82,7 @@ python -m tools.qc_lerobot path/to/lerobot_dataset \
   --episodes 0-5 \
   --camera-key observation.images.cam_left_wrist \
   --sample-fps 1 \
+  --save-evidence \
   --output reports/unitree_g1 \
   --dataset-version unitree-v1
 ```
