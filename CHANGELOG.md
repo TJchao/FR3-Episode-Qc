@@ -12,6 +12,9 @@
 - Added a sanitized validation report for the official Unitree G1 Dex3 LeRobot dataset.
 - Renamed adjacent-frame pHash findings to `image_static_candidate` to avoid confusing static intervals with cross-episode duplicate detection.
 - Added image rule-hit versus unique-frame counts, pHash threshold sweep, grouped Unitree motion statistics, explicit unknown units, LeRobot schema version inspection, and episode-length mismatch checks.
+- Added gold-set template construction and precision / recall / FPR evaluation.
+- Added dependency-free handcrafted visual embeddings, kNN coverage density, cross-episode duplicate candidates, and PCA visualization.
+- Added batch-level dataset profiling over low-dimensional QC, motion, sampled image metrics, embedding coverage, and gold-set status.
 - Added tests for profiles, image boundaries, motion statistics, LeRobot loading, video decoding, and fatal-image release gating.
 
 ## v0.3.0 - 2026-11-04

@@ -82,6 +82,7 @@ def inspect_layout(layout: LeRobotLayout) -> dict[str, Any]:
 
     return {
         "dataset_dir": str(layout.root),
+        "robot_type": layout.info.get("robot_type"),
         "codebase_version": layout.info.get("codebase_version"),
         "total_episodes": layout.info.get("total_episodes"),
         "total_frames": layout.info.get("total_frames"),
@@ -246,6 +247,127 @@ def load_selected_episodes(
         )
         raw_rows[index] = rows
     return episode_rows, episodes, raw_rows
+
+
+def iter_selected_episode_arrays(
+    layout: LeRobotLayout,
+    selected: list[int],
+) -> tuple[dict[int, dict[str, Any]], dict[int, EpisodeData]]:
+    """Stream selected episodes without converting every Arrow row to Python."""
+    episode_table = pq.read_table(layout.episode_files[0])
+    episode_rows: dict[int, dict[str, Any]] = {}
+    for row in episode_table.to_pylist():
+        index = int(row["episode_index"])
+        if index in selected:
+            episode_rows[index] = row
+
+    selected_set = set(selected)
+    features = layout.info.get("features", {})
+    state_dim = int(features.get("observation.state", {}).get("shape", [0])[-1] or 0)
+    action_dim = int(features.get("action", {}).get("shape", [0])[-1] or 0)
+    schema_version = str(layout.info.get("codebase_version") or "unknown")
+    state_names = _feature_names(features.get("observation.state", {}))
+    action_names = _feature_names(features.get("action", {}))
+    episodes: dict[int, EpisodeData] = {}
+
+    for data_path in layout.data_files:
+        table = pq.read_table(
+            data_path,
+            columns=[
+                "episode_index",
+                "timestamp",
+                "frame_index",
+                "index",
+                "task_index",
+                "observation.state",
+                "action",
+            ],
+        )
+        episode_values = table["episode_index"].to_numpy(zero_copy_only=False)
+        positions_by_episode: dict[int, list[int]] = {
+            index: [] for index in selected if index not in episodes
+        }
+        for position, raw_index in enumerate(episode_values):
+            index = int(raw_index)
+            if index in positions_by_episode:
+                positions_by_episode[index].append(position)
+
+        timestamps_all = np.asarray(
+            table["timestamp"].to_numpy(zero_copy_only=False), dtype=np.float64
+        )
+        frame_indices_all = np.asarray(
+            table["frame_index"].to_numpy(zero_copy_only=False), dtype=np.int64
+        )
+        global_indices_all = np.asarray(
+            table["index"].to_numpy(zero_copy_only=False), dtype=np.int64
+        )
+        task_indices_all = np.asarray(
+            table["task_index"].to_numpy(zero_copy_only=False), dtype=np.int64
+        )
+        state_array = table["observation.state"].combine_chunks()
+        action_array = table["action"].combine_chunks()
+        state_values = np.asarray(
+            state_array.values.to_numpy(zero_copy_only=False), dtype=np.float32
+        )
+        action_values = np.asarray(
+            action_array.values.to_numpy(zero_copy_only=False), dtype=np.float32
+        )
+        state_offsets = state_array.offsets.to_numpy(zero_copy_only=False)
+        action_offsets = action_array.offsets.to_numpy(zero_copy_only=False)
+
+        for index, positions in sorted(positions_by_episode.items()):
+            if not positions:
+                continue
+            positions_array = np.asarray(positions, dtype=np.int64)
+            timestamps = timestamps_all[positions_array]
+            order = np.argsort(timestamps, kind="stable")
+            positions_array = positions_array[order]
+            timestamps = timestamps[order]
+
+            state_parts = [
+                state_values[state_offsets[pos]:state_offsets[pos + 1]]
+                for pos in positions_array
+            ]
+            action_parts = [
+                action_values[action_offsets[pos]:action_offsets[pos + 1]]
+                for pos in positions_array
+            ]
+            state = (
+                np.concatenate(state_parts).reshape(len(positions_array), state_dim)
+                if state_parts
+                else np.empty((0, state_dim), dtype=np.float32)
+            )
+            action = (
+                np.concatenate(action_parts).reshape(len(positions_array), action_dim)
+                if action_parts
+                else np.empty((0, action_dim), dtype=np.float32)
+            )
+            episodes[index] = EpisodeData(
+                metadata={
+                    "episode_id": f"episode_{index:06d}",
+                    "robot_type": layout.info.get("robot_type", "unknown"),
+                    "frame_count": len(positions_array),
+                    "fps": layout.info.get("fps"),
+                    "state_dim": state_dim or None,
+                    "action_dim": action_dim or None,
+                    "schema_version": schema_version,
+                    "expected_frame_count": episode_rows[index].get("length"),
+                    "state_names": state_names,
+                    "action_names": action_names,
+                    "source": "lerobot",
+                },
+                arrays={
+                    "timestamp_s": timestamps,
+                    "frame_index": frame_indices_all[positions_array],
+                    "episode_index": np.full(len(positions_array), index, dtype=np.int64),
+                    "index": global_indices_all[positions_array],
+                    "task_index": task_indices_all[positions_array],
+                    "state": state,
+                    "action": action,
+                },
+            )
+
+    return episode_rows, episodes
 
 
 def video_path_for_episode(

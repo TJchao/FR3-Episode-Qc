@@ -110,6 +110,65 @@ OpenCV is used first for seek-based single-frame decoding. If decoding fails, fo
 
 The tool does not load a complete video into memory and does not synthesize missing image frames.
 
+## Batch Analysis
+
+### Gold Set
+
+Build a review template from image metrics and rule hits:
+
+```bash
+python -m tools.build_gold_set \
+  --image-metrics reports/unitree/image_metrics.parquet \
+  --image-hits reports/unitree/image_rule_hits.csv \
+  --output reports/unitree/gold_set.csv \
+  --metadata reports/unitree/gold_set_meta.json \
+  --max-hits-per-rule 20 \
+  --max-controls-per-rule 20
+```
+
+Fill either `human_label` or `is_true_positive` in `gold_set.csv`, then evaluate:
+
+```bash
+python -m tools.evaluate_gold_set \
+  --gold-set reports/unitree/gold_set.csv \
+  --metadata reports/unitree/gold_set_meta.json \
+  --output-json reports/unitree/gold_set_metrics.json \
+  --output-md reports/unitree/gold_set_metrics.md
+```
+
+The evaluator reports precision, recall, FPR, F1, confusion matrices, review completion, and policy-based automation coverage. If human labels are absent, it intentionally returns null quality metrics rather than fabricating them.
+
+### Embedding Coverage
+
+The lightweight coverage prototype uses `handcrafted_visual_v1`: HSV color, DCT layout, gradient orientation, and pHash information are concatenated into a 216-D L2-normalized episode embedding. It does not require PyTorch or a downloaded vision model.
+
+```bash
+python -m tools.embedding_coverage path/to/lerobot_dataset \
+  --episodes 0-9 \
+  --camera-key observation.images.cam_left_wrist \
+  --frames-per-episode 6 \
+  --k 3 \
+  --near-duplicate-similarity 0.99 \
+  --output reports/unitree_embedding
+```
+
+Outputs include episode embeddings, frame-level sampling records, original-space kNN density, cross-episode duplicate candidates, and a PCA SVG. PCA is visualization only; coverage density is computed in the original embedding space. The similarity threshold is uncalibrated until reviewed pairs are available.
+
+### Dataset Profile
+
+Aggregate low-dimensional QC, motion groups, sampled image metrics, embedding coverage, and gold-set status:
+
+```bash
+python -m tools.profile_dataset path/to/lerobot_dataset \
+  --profile unitree_g1 \
+  --episodes 0-300 \
+  --image-metrics reports/unitree/image_metrics.parquet \
+  --image-hits reports/unitree/image_rule_hits.csv \
+  --embedding-summary reports/unitree_embedding/coverage_summary.json \
+  --gold-set-metrics reports/unitree/gold_set_metrics.json \
+  --output-dir reports/unitree_profile
+```
+
 Required `metadata.json` fields:
 
 ```json

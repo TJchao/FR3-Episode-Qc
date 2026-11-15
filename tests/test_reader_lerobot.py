@@ -68,7 +68,7 @@ def _write_dataset(root: Path) -> None:
     }
     for episode_index in range(2):
         for frame_index in range(4):
-            rows["timestamp"].append(episode_index + frame_index * 0.25)
+            rows["timestamp"].append(frame_index * 0.25)
             rows["frame_index"].append(frame_index)
             rows["episode_index"].append(episode_index)
             rows["index"].append(episode_index * 4 + frame_index)

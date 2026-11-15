@@ -209,6 +209,32 @@ CLI release gate blocking a fatal black-frame episode
 
 Current verification: 77 tests passed.
 
+## P1 extension: gold set, embedding, and profile
+
+After P0.1, three batch-analysis capabilities were added.
+
+### Gold set without fabricating labels
+
+The tool generates a balanced review queue from auto hits and deterministic controls. On episodes 0-9, sampled-image QC produced 363 frames and 148 rule hits. The gold-set template contains 120 rows: 20 hits and 20 controls for each of blur, freeze, and static-candidate rules.
+
+Because no human labels have been entered, precision, recall, FPR, and F1 are deliberately null. The tool reports policy-based automation coverage instead:
+
+```text
+blur: 94.2149%
+freeze: 93.6639%
+static candidate: 71.3499%
+```
+
+### Dependency-free embedding coverage
+
+Installing CLIP or DINOv2 would add a large model dependency before the review loop was trustworthy. The P1 implementation therefore uses `handcrafted_visual_v1`: HSV histogram, low-frequency DCT, gradient orientation, and pHash information in a 216-D normalized descriptor.
+
+For episodes 0-9, episode 4 was the relative low-density tail and no pair exceeded the uncalibrated 0.99 near-duplicate threshold. The report explicitly says that this is not semantic coverage and not proof of no duplicates.
+
+### Batch profile over all 301 episodes
+
+A PyArrow streaming path was added so all 301 episodes / 281196 frames can be profiled without converting every row to Python. The full low-dimensional profile completed in about 2.7 seconds and reported 301/301 passed. The output combines quality, frame and duration distributions, grouped motion statistics, image metrics, embedding coverage, and gold-set review status.
+
 ### 7. OpenCV image writing failed on a non-ASCII Windows path
 
 `cv2.imwrite` failed when the temporary path contained Chinese characters. The fix uses `cv2.imencode` followed by `Path.write_bytes`, which avoids OpenCV's path encoding limitation while preserving the same JPEG output.
