@@ -114,6 +114,7 @@ def test_review_html_embeds_payload_and_guidance(
     assert "file:///" in text
     assert "exportCsv" in text
     assert "localStorage" in text
+    assert "ruleFilter.value=previousRule" in text
 
 
 def test_review_items_without_copy_use_original_paths(

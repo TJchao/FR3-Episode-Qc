@@ -473,7 +473,9 @@ function frameHtml(row, uri, label, frame, ts) {{
 }}
 function metric(label,value) {{ return `<div class="metric"><strong>${{label}}</strong><span>${{value??'-'}}</span></div>`; }}
 function render() {{
+  const previousRule=ruleFilter.value;
   const rules=[...new Set(rows.map(r=>r.rule_id))].sort(); ruleFilter.innerHTML='<option value="">All</option>'+rules.map(r=>`<option>${{r}}</option>`).join('');
+  ruleFilter.value=previousRule;
   const selectedRule=ruleFilter.value, status=statusFilter.value, q=search.value.trim().toLowerCase();
   filtered=rows.filter(r=>{{ if(selectedRule&&r.rule_id!==selectedRule)return false; if(status==='unreviewed'&&reviewed(r))return false; if(status==='reviewed'&&!reviewed(r))return false; if(status==='hit'&&!r.auto_hit_bool)return false; if(status==='control'&&r.auto_hit_bool)return false; if(q&&!`${{r.rule_id}} ${{r.episode_id}} ${{r.frame_index}} ${{r.note}}`.toLowerCase().includes(q))return false; return true; }});
   cards.innerHTML=filtered.map(r=>{{
