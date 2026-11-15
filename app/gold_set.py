@@ -148,7 +148,7 @@ def evaluate_gold_set(
     rows: list[dict[str, Any]],
     source_counts: dict[str, dict[str, int]] | None = None,
 ) -> dict[str, Any]:
-    """Compute per-rule confusion matrices after human labels are filled."""
+    """Compute reviewed precision and source-weighted FPR estimates."""
     source_counts = source_counts or {}
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
@@ -156,8 +156,12 @@ def evaluate_gold_set(
 
     per_rule: dict[str, Any] = {}
     all_counts = Counter()
+    weighted_false_positives: list[float] = []
+    weighted_true_negatives: list[float] = []
     for rule, rule_rows in sorted(grouped.items()):
         counts = Counter()
+        hit_counts = Counter()
+        control_counts = Counter()
         ambiguous = 0
         for row in rule_rows:
             truth = parse_bool(row.get("is_true_positive"))
@@ -169,25 +173,59 @@ def evaluate_gold_set(
                 continue
             if auto and truth:
                 counts["tp"] += 1
+                hit_counts["tp"] += 1
             elif auto and not truth:
                 counts["fp"] += 1
+                hit_counts["fp"] += 1
             elif not auto and truth:
                 counts["fn"] += 1
+                control_counts["fn"] += 1
             else:
                 counts["tn"] += 1
+                control_counts["tn"] += 1
 
         all_counts.update(counts)
         source = source_counts.get(rule, {})
         source_frames = int(source.get("source_frame_count", 0))
         source_hits = int(source.get("source_auto_hit_count", 0))
+        reviewed_hit_count = sum(hit_counts.values())
+        reviewed_control_count = sum(control_counts.values())
+        precision = _safe_ratio(hit_counts["tp"], reviewed_hit_count)
+        weighted_fpr = None
+        estimated_tp = None
+        estimated_fp = None
+        estimated_fn = None
+        estimated_tn = None
+        if source_frames and reviewed_control_count:
+            source_non_hits = source_frames - source_hits
+            true_hit_fraction = (
+                hit_counts["tp"] / reviewed_hit_count
+                if reviewed_hit_count
+                else 0.0
+            )
+            false_non_hit_fraction = (
+                control_counts["fn"] / reviewed_control_count
+                if reviewed_control_count
+                else 0.0
+            )
+            estimated_tp = source_hits * true_hit_fraction
+            estimated_fp = source_hits * (1.0 - true_hit_fraction)
+            estimated_fn = source_non_hits * false_non_hit_fraction
+            estimated_tn = source_non_hits - estimated_fn
+            weighted_false_positives.append(estimated_fp)
+            weighted_true_negatives.append(estimated_tn)
+            denominator = estimated_fp + estimated_tn
+            weighted_fpr = (
+                round(estimated_fp / denominator, 6) if denominator > 0 else None
+            )
         result: dict[str, Any] = {
             "rows": len(rule_rows),
             "evaluated_rows": sum(counts.values()),
             "ambiguous_or_unreviewed": ambiguous,
             "review_completion": _safe_ratio(sum(counts.values()), len(rule_rows)),
             "reviewed_sample_counts": dict(sorted(counts.items())),
-            "precision": _safe_ratio(counts["tp"], counts["tp"] + counts["fp"]),
-            "fpr_estimate": _safe_ratio(counts["fp"], counts["fp"] + counts["tn"]),
+            "precision": precision,
+            "fpr_estimate": weighted_fpr,
             "recall": None,
             "f1": None,
             "recall_f1_null_reason": (
@@ -199,12 +237,26 @@ def evaluate_gold_set(
             "automation_coverage_definition": (
                 "1 - review candidates / sampled frames; assumes every auto hit needs review"
             ),
+            "fpr_estimate_method": (
+                "case-control weighted estimate using source hit/non-hit counts"
+            ),
+            "estimated_true_positive_count": round(estimated_tp, 6) if estimated_tp is not None else None,
+            "estimated_false_positive_count": round(estimated_fp, 6) if estimated_fp is not None else None,
+            "estimated_false_negative_count": round(estimated_fn, 6) if estimated_fn is not None else None,
+            "estimated_true_negative_count": round(estimated_tn, 6) if estimated_tn is not None else None,
         }
         if source_frames:
             result["automation_coverage"] = round(1 - source_hits / source_frames, 6)
         per_rule[rule] = result
 
     overall_precision = _safe_ratio(all_counts["tp"], all_counts["tp"] + all_counts["fp"])
+    total_weighted_fp = sum(weighted_false_positives)
+    total_weighted_tn = sum(weighted_true_negatives)
+    overall_weighted_fpr = (
+        round(total_weighted_fp / (total_weighted_fp + total_weighted_tn), 6)
+        if total_weighted_fp + total_weighted_tn > 0
+        else None
+    )
     null_reason = "sampling design does not cover false negatives"
     return {
         "available": sum(all_counts.values()) > 0,
@@ -215,14 +267,14 @@ def evaluate_gold_set(
         "review_completion": _safe_ratio(sum(all_counts.values()), len(rows)),
         "reviewed_sample_counts": dict(sorted(all_counts.items())),
         "precision": overall_precision,
-        "fpr_estimate": _safe_ratio(all_counts["fp"], all_counts["fp"] + all_counts["tn"]),
+        "fpr_estimate": overall_weighted_fpr,
         "recall": None,
         "f1": None,
         "recall_f1_null_reason": null_reason,
         "metric_boundary": (
-            "Precision is measured on reviewed auto hits. FPR is estimated from "
-            "reviewed controls. Recall and F1 are null because this sampling "
-            "design does not cover false negatives."
+            "Precision is measured on reviewed auto hits. FPR is a case-control "
+            "weighted estimate using source hit/non-hit counts. Recall and F1 "
+            "are null because this sampling design does not cover all false negatives."
         ),
         "per_rule": per_rule,
     }

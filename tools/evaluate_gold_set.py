@@ -39,7 +39,7 @@ def _markdown(metrics: dict) -> str:
         )
     lines.extend([
         "",
-        "Automation coverage is `1 - review candidates / sampled frames` under the current policy that every auto hit needs human review. It is a review-work metric, not an accuracy claim. Recall and F1 remain null because this sampling design does not cover false negatives.",
+        "Automation coverage is `1 - review candidates / sampled frames` under the current policy that every auto hit needs human review. It is a review-work metric, not an accuracy claim. FPR is a case-control weighted estimate using source hit/non-hit counts. Recall and F1 remain null because this sampling design does not cover all false negatives.",
         "",
     ])
     return "\n".join(lines)

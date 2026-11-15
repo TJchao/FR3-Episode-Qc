@@ -141,3 +141,47 @@ def test_gold_set_metrics_handle_false_positive_and_miss() -> None:
     assert matrix["fn"] >= 1
     assert metrics["precision"] < 1.0
     assert metrics["recall"] is None
+
+
+def test_fpr_is_weighted_by_source_hit_and_non_hit_counts() -> None:
+    rows = [
+        {
+            "rule_id": "image_blur",
+            "episode_id": "ep0",
+            "frame_index": 0,
+            "timestamp_s": 0.0,
+            "evidence_path": "",
+            "auto_hit": True,
+            "human_label": False,
+            "is_true_positive": False,
+            "note": "",
+        },
+        {
+            "rule_id": "image_blur",
+            "episode_id": "ep0",
+            "frame_index": 1,
+            "timestamp_s": 1.0,
+            "evidence_path": "",
+            "auto_hit": False,
+            "human_label": True,
+            "is_true_positive": True,
+            "note": "",
+        },
+    ]
+    source_counts = {
+        "image_blur": {
+            "source_frame_count": 100,
+            "source_auto_hit_count": 10,
+        }
+    }
+
+    metrics = evaluate_gold_set(rows, source_counts)
+    rule = metrics["per_rule"]["image_blur"]
+
+    # Among 10 source hits, the reviewed 0% precision estimates 10 false
+    # positives. Among 90 non-hits, the reviewed control implies 90 false
+    # negatives, leaving zero estimated true negatives.
+    assert rule["precision"] == 0.0
+    assert rule["estimated_false_positive_count"] == 10.0
+    assert rule["estimated_true_negative_count"] == 0.0
+    assert rule["fpr_estimate"] == 1.0

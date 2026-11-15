@@ -138,6 +138,16 @@ python -m tools.evaluate_gold_set \
 
 The evaluator reports precision, an FPR estimate, reviewed sample counts, review completion, and policy-based automation coverage. Recall and F1 remain null because the sampling design does not cover false negatives. If human labels are absent, precision and FPR are also null rather than fabricated.
 
+Threshold calibration is available after review:
+
+```bash
+python -m tools.calibrate_image_rules \
+  --gold-set reports/unitree/gold_set_reviewed.csv \
+  --image-metrics reports/unitree/image_metrics.parquet \
+  --output-json reports/unitree/threshold_calibration.json \
+  --output-md reports/unitree/threshold_calibration.md
+```
+
 ### Gold Set Review
 
 Generate a dependency-free local HTML reviewer with current and previous sampled frames:

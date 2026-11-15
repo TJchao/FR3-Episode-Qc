@@ -217,7 +217,9 @@ After P0.1, three batch-analysis capabilities were added.
 
 The tool generates a balanced review queue from auto hits and deterministic controls. The initial 10-episode pilot produced 363 frames and 148 rule hits. It was then expanded to all 86 episodes covered by the locally available left-wrist video file, producing 2806 frames and 980 rule hits. The expanded gold-set template contains 120 rows: 20 round-robin hit samples and 20 controls for each rule.
 
-Because no human labels have been entered, precision and the FPR estimate are deliberately null. Recall and F1 remain null even after review because the sampling design does not cover false negatives. The tool reports policy-based automation coverage instead:
+All 120 rows were reviewed, followed by an 11-row second pass for objectively ambiguous labels. Final reviewed precision is 53.3333% overall, with a case-control weighted FPR estimate of 6.6404%. Per-rule precision is 40% for blur, 70% for freeze, and 50% for static candidates. Recall and F1 remain null because the sampling design does not cover all false negatives.
+
+Threshold calibration found higher sample precision at blur P2 than P5 or P10, and at static pHash Hamming 2 than Hamming 4. These are review-priority recommendations, not population recall claims. Policy-based automation coverage remains:
 
 ```text
 blur: 93.7634%

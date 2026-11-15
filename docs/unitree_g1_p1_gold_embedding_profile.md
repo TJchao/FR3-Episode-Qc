@@ -44,7 +44,7 @@ The expanded review template contains 120 rows:
 20 static-candidate hits + 20 static-candidate controls
 ```
 
-In the 10-episode pilot, blur and freeze had fewer than 30 hits and were placed into the template as a census. In the expanded 86-episode run, every rule has more than 30 hits, so each uses 20 round-robin hit samples plus 20 controls. A reviewer fills `human_label` or `is_true_positive`; until then, precision and the FPR estimate remain null.
+All 120 rows were reviewed. A second pass rechecked 11 objectively ambiguous rows: seven low-Laplacian blur hits and four control rows whose pHash distance contradicted the initial label. The final result below uses the corrected labels.
 
 Policy-based automation coverage, where every auto hit requires human review:
 
@@ -55,6 +55,17 @@ Policy-based automation coverage, where every auto hit requires human review:
 | `image_static_candidate` | 684 / 2806 | 75.6237% |
 
 This automation coverage is a review-work metric, not an accuracy claim.
+
+Final reviewed metrics:
+
+| Rule | Precision | Weighted FPR estimate | Reviewed counts |
+|---|---:|---:|---|
+| `image_blur` | 40.00% | 3.8377% | TP 8 / FP 12 / TN 20 |
+| `image_freeze` | 70.00% | 1.6619% | TP 14 / FP 6 / FN 4 / TN 16 |
+| `image_static_candidate` | 50.00% | 14.5044% | TP 10 / FP 10 / FN 1 / TN 19 |
+| Overall | 53.3333% | 6.6404% | TP 32 / FP 28 / FN 5 / TN 55 |
+
+The weighted FPR estimate uses source hit/non-hit counts rather than mixing the balanced 20-hit/20-control review sample directly. It is still an estimate conditional on this review design.
 
 The expanded run reports all 86 episodes as failed only because relative image rules generate at least one candidate in every episode. This is not a final data-quality failure rate; it reflects the current review-policy setting in which each auto hit requires human review.
 
@@ -69,12 +80,41 @@ Adjacent-frame pHash threshold sweep over 86 episodes:
 Metric boundary:
 
 ```text
-Precision: measurable after hit review
-FPR: estimated from reviewed controls
+Precision: measured on reviewed auto-hit samples
+FPR: case-control weighted estimate
 Recall: null
 F1: null
 Reason: sampling design does not cover false negatives
 ```
+
+### Threshold Calibration
+
+Blur percentile calibration on the reviewed sample:
+
+| Threshold | Flagged | TP | FP | FN | TN | Sample precision |
+|---|---:|---:|---:|---:|---:|---:|
+| P2 | 9 | 5 | 4 | 3 | 28 | 55.5556% |
+| P5 | 20 | 8 | 12 | 0 | 20 | 40.0000% |
+| P10 | 21 | 8 | 13 | 0 | 19 | 38.0952% |
+
+Static-candidate pHash calibration:
+
+| Threshold | Flagged | TP | FP | FN | TN | Sample precision |
+|---|---:|---:|---:|---:|---:|---:|
+| Hamming 0 | 0 | 0 | 0 | 11 | 29 | null |
+| Hamming 2 | 8 | 6 | 2 | 5 | 27 | 75.0000% |
+| Hamming 4 | 20 | 10 | 10 | 1 | 19 | 50.0000% |
+| Hamming 6 | 22 | 10 | 12 | 1 | 17 | 45.4545% |
+| Hamming 8 | 25 | 10 | 15 | 1 | 14 | 40.0000% |
+
+Interpretation:
+
+```text
+blur: P2 is a higher-precision review threshold; P2-P10 can be a low-priority low-sharpness band.
+static: Hamming 2 is the high-precision threshold; Hamming 4 remains a broader review-only band.
+```
+
+These threshold comparisons are conditional on the reviewed sample and do not estimate population recall.
 
 ## 2. Handcrafted Embedding Coverage
 
@@ -210,10 +250,10 @@ Absolute jerk values are therefore not comparable across datasets. Jerk is used 
 This P1 profile does not claim:
 
 ```text
-human-verified image precision or recall
+population recall for image rules
 semantic CLIP/DINOv2 coverage
 calibrated duplicate thresholds
 absolute visual blind-spot detection
 ```
 
-It does provide reproducible review queues, original-space kNN density, cross-episode duplicate candidates, and a batch-level summary suitable for gold-set calibration and later model-based embedding upgrades.
+It does provide human-reviewed precision, case-control weighted FPR estimates, threshold calibration, original-space kNN density, cross-episode duplicate candidates, and a batch-level summary suitable for later model-based embedding upgrades.

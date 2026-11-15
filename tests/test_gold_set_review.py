@@ -115,6 +115,8 @@ def test_review_html_embeds_payload_and_guidance(
     assert "exportCsv" in text
     assert "localStorage" in text
     assert "ruleFilter.value=previousRule" in text
+    assert "1 / ${r.review_guidance.true}" in text
+    assert "2 / ${r.review_guidance.false}" in text
 
 
 def test_review_items_without_copy_use_original_paths(

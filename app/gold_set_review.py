@@ -487,8 +487,8 @@ function render() {{
       <div class="images">${{frameHtml(r,r.previous_uri,'前一采样帧',r.previous_frame_index,r.previous_timestamp_s)}}${{frameHtml(r,r.current_uri,'当前帧',r.frame_index,r.timestamp_s)}}</div>
       <div class="metrics">${{metric('Sampled pHash Hamming',r.sampled_hamming_distance)}}${{metric('Auto rule value',r.auto_rule_value)}}${{metric('Auto rule threshold',r.auto_rule_threshold)}}${{metric('Laplacian variance',r.current_laplacian_variance)}}${{metric('Brightness mean',r.current_brightness_mean)}}</div>
       <div class="actions" tabindex="-1">
-        <button class="good" data-decision="1" aria-pressed="${{done&&decision}}">1 / 规则成立</button>
-        <button class="bad" data-decision="0" aria-pressed="${{done&&!decision}}">2 / 规则不成立</button>
+        <button class="good" data-decision="1" aria-pressed="${{done&&decision}}">1 / ${{r.review_guidance.true}}</button>
+        <button class="bad" data-decision="0" aria-pressed="${{done&&!decision}}">2 / ${{r.review_guidance.false}}</button>
         <button class="warn" data-decision="">3 / 不确定</button>
       </div>
       <textarea class="note" data-note="1" placeholder="备注：例如任务等待、低纹理、图像变化点、疑似相机卡帧">${{r.note||''}}</textarea>
