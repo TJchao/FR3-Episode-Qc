@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -13,14 +12,6 @@ from app.image_rules import perceptual_hash
 
 
 EMBEDDING_METHOD = "handcrafted_visual_v1"
-
-
-@dataclass(frozen=True)
-class EpisodeEmbedding:
-    episode_id: str
-    frame_indices: list[int]
-    timestamps_s: list[float]
-    descriptor: np.ndarray
 
 
 def build_descriptor(frame: np.ndarray) -> np.ndarray:

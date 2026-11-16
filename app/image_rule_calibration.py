@@ -10,6 +10,9 @@ from typing import Any
 import numpy as np
 import pyarrow.parquet as pq
 
+from app.gold_set import parse_bool
+from app.image_rules import hamming_distance
+
 
 def read_csv_rows(path: str | Path) -> list[dict[str, Any]]:
     with Path(path).open(encoding="utf-8-sig", newline="") as file_handle:
@@ -18,10 +21,6 @@ def read_csv_rows(path: str | Path) -> list[dict[str, Any]]:
 
 def read_metric_rows(path: str | Path) -> list[dict[str, Any]]:
     return pq.read_table(path).to_pylist()
-
-
-def _hamming(left: str, right: str) -> int:
-    return sum(a != b for a, b in zip(left, right))
 
 
 def _counts(pairs: list[tuple[bool, bool]]) -> dict[str, int]:
@@ -45,6 +44,30 @@ def _summary(pairs: list[tuple[bool, bool]]) -> dict[str, Any]:
             "population recall estimate."
         ),
     }
+
+
+def _reviewed_truth(row: dict[str, Any]) -> bool | None:
+    truth = parse_bool(row.get("is_true_positive"))
+    if truth is None:
+        truth = parse_bool(row.get("human_label"))
+    return truth
+
+
+def _best_threshold(rows: dict[str, dict[str, Any]]) -> str:
+    eligible = [
+        (name, row)
+        for name, row in rows.items()
+        if row["sample_precision"] is not None
+    ]
+    if not eligible:
+        return "no threshold flagged reviewed rows"
+    return max(
+        eligible,
+        key=lambda item: (
+            item[1]["sample_precision"],
+            item[1]["flagged_reviewed_rows"],
+        ),
+    )[0]
 
 
 def calibrate(
@@ -75,9 +98,9 @@ def calibrate(
             metric = lookup[(episode_id, frame_index)]
             episode_values = [float(row["laplacian_variance"]) for row in metrics_by_episode[episode_id]]
             threshold = float(np.percentile(episode_values, percentile))
-            truth = str(gold_row.get("is_true_positive", "")).lower() == "true"
-            if not truth and str(gold_row.get("human_label", "")).lower() == "true":
-                truth = True
+            truth = _reviewed_truth(gold_row)
+            if truth is None:
+                continue
             pairs.append((float(metric["laplacian_variance"]) < threshold, truth))
         blur_rules[f"P{percentile:g}"] = _summary(pairs)
 
@@ -100,13 +123,13 @@ def calibrate(
                 else None
             )
             distance = (
-                _hamming(str(previous["phash"]), str(current["phash"]))
+                hamming_distance(str(previous["phash"]), str(current["phash"]))
                 if previous is not None
                 else 10**6
             )
-            truth = str(gold_row.get("is_true_positive", "")).lower() == "true"
-            if not truth and str(gold_row.get("human_label", "")).lower() == "true":
-                truth = True
+            truth = _reviewed_truth(gold_row)
+            if truth is None:
+                continue
             pairs.append((distance <= threshold, truth))
         static_rules[f"H{threshold}"] = _summary(pairs)
 
@@ -116,12 +139,14 @@ def calibrate(
         "static_hamming": static_rules,
         "recommended_interpretation": {
             "image_blur": (
-                "P2 is the higher-precision review threshold in this gold set; "
-                "P2-P10 can remain a lower-priority low-texture/low-sharpness band."
+                f"{_best_threshold(blur_rules)} has the highest reviewed-sample "
+                "precision in this gold set; validate on another batch before "
+                "changing a production policy."
             ),
             "image_static_candidate": (
-                "Hamming 2 is the higher-precision static threshold in this gold set; "
-                "Hamming 4 can remain a broader review-only band."
+                f"{_best_threshold(static_rules)} has the highest reviewed-sample "
+                "precision in this gold set; validate on another batch before "
+                "changing a production policy."
             ),
         },
         "boundary": (

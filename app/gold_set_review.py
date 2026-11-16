@@ -6,6 +6,7 @@ import csv
 import hashlib
 import html
 import json
+import re
 import shutil
 from copy import deepcopy
 from pathlib import Path
@@ -13,6 +14,7 @@ from typing import Any
 
 import pyarrow.parquet as pq
 
+from app.gold_set import parse_bool
 from app.image_rules import hamming_distance
 
 
@@ -44,17 +46,6 @@ def _as_float(value: Any) -> float | None:
         return None
 
 
-def _parse_bool(value: Any) -> bool | None:
-    if isinstance(value, bool):
-        return value
-    text = str(value).strip().lower()
-    if text in {"true", "1", "yes", "y"}:
-        return True
-    if text in {"false", "0", "no", "n"}:
-        return False
-    return None
-
-
 def _metric_key(row: dict[str, Any]) -> tuple[str, int]:
     return str(row.get("episode_id")), int(row.get("frame_index"))
 
@@ -73,7 +64,7 @@ def _review_id(row: dict[str, Any]) -> str:
         str(row.get("rule_id", "")),
         str(row.get("episode_id", "")),
         str(_as_int(row.get("frame_index"))),
-        str(bool(_parse_bool(row.get("auto_hit")))),
+        str(bool(parse_bool(row.get("auto_hit")))),
     ]
     return "|".join(parts)
 
@@ -106,12 +97,17 @@ def _copy_evidence(
     source = Path(source_path)
     if not source.is_file():
         raise FileNotFoundError(f"evidence frame does not exist: {source}")
-    target_dir = output_dir / "evidence" / episode_id
+    safe_episode_id = re.sub(
+        r"[^A-Za-z0-9_.-]+",
+        "_",
+        episode_id,
+    ).strip("._-") or "episode"
+    target_dir = output_dir / "evidence" / safe_episode_id
     target_dir.mkdir(parents=True, exist_ok=True)
     target = target_dir / f"{role}_{frame_index:08d}{source.suffix.lower()}"
     if not target.exists():
         shutil.copy2(source, target)
-    return (Path("evidence") / episode_id / target.name).as_posix()
+    return (Path("evidence") / safe_episode_id / target.name).as_posix()
 
 
 def build_review_items(
@@ -224,7 +220,7 @@ def build_review_items(
         previous_phash = str(previous.get("phash", "")) if previous else ""
         item = deepcopy(gold_row)
         item["review_id"] = _review_id(gold_row)
-        item["auto_hit_bool"] = bool(_parse_bool(gold_row.get("auto_hit")))
+        item["auto_hit_bool"] = bool(parse_bool(gold_row.get("auto_hit")))
         item["current_uri"] = current_uri
         item["previous_uri"] = previous_uri
         item["previous_frame_index"] = (

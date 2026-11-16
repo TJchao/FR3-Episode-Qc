@@ -8,8 +8,6 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-import pyarrow as pa
-import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 from app.readers.base import EpisodeData
@@ -127,31 +125,6 @@ def parse_episode_selection(selection: str, available_count: int) -> list[int]:
     return sorted(selected)
 
 
-def _tables_by_episode(
-    files: list[Path],
-    selected: list[int],
-) -> dict[int, list[dict[str, Any]]]:
-    grouped: dict[int, list[dict[str, Any]]] = {index: [] for index in selected}
-    mask_values = selected
-    for path in files:
-        table = pq.read_table(path)
-        if "episode_index" not in table.column_names:
-            raise LeRobotDatasetError(
-                f"LeRobot feature is missing: episode_index in {path.relative_to(files[0].parents[2])}"
-            )
-        try:
-            episode_index = pc.cast(table["episode_index"], pa.int64())
-            value_set = pa.array(mask_values, type=pa.int64())
-            table = table.filter(pc.is_in(episode_index, value_set=value_set))
-        except Exception as exc:  # PyArrow raises several arrow-specific types.
-            raise LeRobotDatasetError(f"cannot filter episode_index in {path}: {exc}") from exc
-        for row in table.to_pylist():
-            episode_index = int(row["episode_index"])
-            if episode_index in grouped:
-                grouped[episode_index].append(row)
-    return grouped
-
-
 def _feature_names(feature: dict[str, Any]) -> list[str]:
     names = feature.get("names")
     if not names:
@@ -162,106 +135,27 @@ def _feature_names(feature: dict[str, Any]) -> list[str]:
     return [str(name) for name in names]
 
 
-def load_selected_episodes(
-    layout: LeRobotLayout,
-    selected: list[int],
-) -> tuple[dict[int, dict[str, Any]], dict[int, EpisodeData], dict[int, list[dict[str, Any]]]]:
-    episode_rows_list = _tables_by_episode(layout.episode_files, selected)
-    data_rows = _tables_by_episode(layout.data_files, selected)
-
-    episode_rows: dict[int, dict[str, Any]] = {}
-    for index, rows in episode_rows_list.items():
-        if not rows:
-            raise LeRobotDatasetError(f"LeRobot episode metadata is missing: {index}")
-        row = rows[0]
-        row["episode_index"] = int(row.get("episode_index", index))
-        episode_rows[index] = row
-
-    episodes: dict[int, EpisodeData] = {}
-    raw_rows: dict[int, list[dict[str, Any]]] = {}
-    features = layout.info.get("features", {})
-    state_dim = features.get("observation.state", {}).get("shape", [None])[-1]
-    action_dim = features.get("action", {}).get("shape", [None])[-1]
-    fps = layout.info.get("fps")
-    schema_version = str(layout.info.get("codebase_version") or "unknown")
-    state_names = _feature_names(features.get("observation.state", {}))
-    action_names = _feature_names(features.get("action", {}))
-
-    for index, rows in data_rows.items():
-        if not rows:
-            episodes[index] = EpisodeData(
-                metadata={
-                    "episode_id": f"episode_{index:06d}",
-                    "robot_type": "unknown",
-                    "frame_count": 0,
-                    "fps": fps,
-                    "state_dim": state_dim,
-                    "action_dim": action_dim,
-                    "schema_version": schema_version,
-                    "expected_frame_count": episode_rows[index].get("length"),
-                    "source": "lerobot",
-                    "errors": [f"LeRobot feature is missing: data for episode {index}"],
-                },
-                arrays={},
-                image_source=None,
-            )
-            continue
-
-        rows.sort(key=lambda row: float(row.get("timestamp", 0.0)))
-        arrays: dict[str, np.ndarray] = {}
-        for field, arrow_name in (
-            ("timestamp_s", "timestamp"),
-            ("frame_index", "frame_index"),
-            ("episode_index", "episode_index"),
-            ("index", "index"),
-            ("task_index", "task_index"),
-            ("state", "observation.state"),
-            ("action", "action"),
-        ):
-            if arrow_name not in rows[0]:
-                continue
-            arrays[field] = np.asarray([row[arrow_name] for row in rows], dtype=float)
-
-        if "state" in arrays:
-            arrays["state"] = arrays["state"].reshape(len(rows), -1)
-        if "action" in arrays:
-            arrays["action"] = arrays["action"].reshape(len(rows), -1)
-
-        metadata = {
-            "episode_id": f"episode_{index:06d}",
-            "robot_type": layout.info.get("robot_type", "unknown"),
-            "frame_count": len(rows),
-            "fps": fps,
-            "state_dim": state_dim,
-            "action_dim": action_dim,
-            "schema_version": schema_version,
-            "expected_frame_count": episode_rows[index].get("length"),
-            "state_names": state_names,
-            "action_names": action_names,
-            "source": "lerobot",
-        }
-        episodes[index] = EpisodeData(
-            metadata=metadata,
-            arrays=arrays,
-            image_source=None,
-        )
-        raw_rows[index] = rows
-    return episode_rows, episodes, raw_rows
-
-
 def iter_selected_episode_arrays(
     layout: LeRobotLayout,
     selected: list[int],
 ) -> tuple[dict[int, dict[str, Any]], dict[int, EpisodeData]]:
     """Stream selected episodes without converting every Arrow row to Python."""
-    episode_table = pq.read_table(layout.episode_files[0])
     episode_rows: dict[int, dict[str, Any]] = {}
-    for row in episode_table.to_pylist():
-        index = int(row["episode_index"])
-        if index in selected:
-            episode_rows[index] = row
+    for episode_path in layout.episode_files:
+        episode_table = pq.read_table(episode_path)
+        for row in episode_table.to_pylist():
+            index = int(row["episode_index"])
+            if index in selected:
+                episode_rows[index] = row
+    missing_metadata = [
+        index for index in selected if index not in episode_rows
+    ]
+    if missing_metadata:
+        preview = ", ".join(str(index) for index in missing_metadata[:10])
+        raise LeRobotDatasetError(
+            f"LeRobot episode metadata is missing: {preview}"
+        )
 
-    selected_set = set(selected)
     features = layout.info.get("features", {})
     state_dim = int(features.get("observation.state", {}).get("shape", [0])[-1] or 0)
     action_dim = int(features.get("action", {}).get("shape", [0])[-1] or 0)
@@ -269,6 +163,7 @@ def iter_selected_episode_arrays(
     state_names = _feature_names(features.get("observation.state", {}))
     action_names = _feature_names(features.get("action", {}))
     episodes: dict[int, EpisodeData] = {}
+    found_episodes: set[int] = set()
 
     for data_path in layout.data_files:
         table = pq.read_table(
@@ -285,7 +180,7 @@ def iter_selected_episode_arrays(
         )
         episode_values = table["episode_index"].to_numpy(zero_copy_only=False)
         positions_by_episode: dict[int, list[int]] = {
-            index: [] for index in selected if index not in episodes
+            index: [] for index in selected if index not in found_episodes
         }
         for position, raw_index in enumerate(episode_values):
             index = int(raw_index)
@@ -319,6 +214,7 @@ def iter_selected_episode_arrays(
             if not positions:
                 continue
             positions_array = np.asarray(positions, dtype=np.int64)
+            found_episodes.add(index)
             timestamps = timestamps_all[positions_array]
             order = np.argsort(timestamps, kind="stable")
             positions_array = positions_array[order]
@@ -352,9 +248,9 @@ def iter_selected_episode_arrays(
                     "action_dim": action_dim or None,
                     "schema_version": schema_version,
                     "expected_frame_count": episode_rows[index].get("length"),
+                    "source": "lerobot",
                     "state_names": state_names,
                     "action_names": action_names,
-                    "source": "lerobot",
                 },
                 arrays={
                     "timestamp_s": timestamps,
@@ -366,6 +262,28 @@ def iter_selected_episode_arrays(
                     "action": action,
                 },
             )
+
+    for index in selected:
+        if index in found_episodes:
+            continue
+        episodes[index] = EpisodeData(
+            metadata={
+                "episode_id": f"episode_{index:06d}",
+                "robot_type": layout.info.get("robot_type", "unknown"),
+                "frame_count": 0,
+                "fps": layout.info.get("fps"),
+                "state_dim": state_dim or None,
+                "action_dim": action_dim or None,
+                "schema_version": schema_version,
+                "expected_frame_count": episode_rows.get(index, {}).get("length"),
+                "state_names": state_names,
+                "action_names": action_names,
+                "source": "lerobot",
+                "errors": [f"LeRobot feature is missing: data for episode {index}"],
+            },
+            arrays={},
+            image_source=None,
+        )
 
     return episode_rows, episodes
 
@@ -388,7 +306,6 @@ def video_path_for_episode(
         return None
 
     file_index = None
-    from_timestamp = 0.0
     for key, value in episode_row.items():
         normalized = key.replace("/", "_").replace(".", "_")
         if camera_key and camera_key.replace(".", "_") not in normalized:
@@ -398,14 +315,29 @@ def video_path_for_episode(
                 file_index = int(value)
             except (TypeError, ValueError):
                 pass
-        if normalized.endswith("from_timestamp"):
-            try:
-                from_timestamp = float(value)
-            except (TypeError, ValueError):
-                pass
-
     if file_index is not None and 0 <= file_index < len(candidates):
         path = candidates[file_index]
     else:
         path = candidates[0]
     return path
+
+
+def video_offset_for_episode(
+    episode_row: dict[str, Any],
+    camera_key: str | None,
+) -> float:
+    """Return the video-local start timestamp for one episode/camera pair."""
+    if not camera_key:
+        return 0.0
+    normalized_camera = camera_key.replace(".", "_")
+    for key, value in episode_row.items():
+        normalized = key.replace("/", "_").replace(".", "_")
+        if (
+            normalized.endswith("from_timestamp")
+            and normalized_camera in normalized
+        ):
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return 0.0
+    return 0.0

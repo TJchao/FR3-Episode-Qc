@@ -15,7 +15,7 @@ import pyarrow.parquet as pq
 from app.readers.lerobot import (
     discover_layout,
     inspect_layout,
-    load_selected_episodes,
+    iter_selected_episode_arrays,
     parse_episode_selection,
 )
 from app.release import evaluate_gate
@@ -122,12 +122,36 @@ def test_inspect_and_load_synthetic_lerobot_dataset(tmp_path: Path) -> None:
     assert report["state_shape"] == [3]
     assert "observation.state" in report["data_columns"]
 
-    episode_rows, episodes, _ = load_selected_episodes(layout, [0, 1])
+    episode_rows, episodes = iter_selected_episode_arrays(layout, [0, 1])
     assert episode_rows[0]["length"] == 4
     assert episodes[0].metadata["schema_version"] == "v3.0"
     assert episodes[0].metadata["expected_frame_count"] == 4
     assert episodes[0].arrays["state"].shape == (4, 3)
     assert episodes[1].arrays["action"].shape == (4, 2)
+
+
+def test_missing_data_episode_is_reported_instead_of_crashing(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "unitree"
+    _write_dataset(root)
+    data_path = root / "data" / "chunk-000" / "file-000.parquet"
+    table = pq.read_table(data_path)
+    table = table.filter(
+        pa.array(
+            [episode_index == 0 for episode_index in table["episode_index"].to_pylist()],
+            type=pa.bool_(),
+        )
+    )
+    pq.write_table(table, data_path)
+
+    layout = discover_layout(root)
+    _, episodes = iter_selected_episode_arrays(layout, [0, 1])
+
+    assert episodes[0].arrays["state"].shape == (4, 3)
+    assert episodes[1].arrays == {}
+    assert episodes[1].metadata["frame_count"] == 0
+    assert "data for episode 1" in episodes[1].metadata["errors"][0]
 
 
 def test_qc_lerobot_outputs_low_dim_motion_and_report(tmp_path: Path) -> None:

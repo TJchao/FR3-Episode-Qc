@@ -29,8 +29,10 @@ from app.profile import ProfileError, load_profile
 from app.readers.lerobot import (
     discover_layout,
     inspect_layout,
-    load_selected_episodes,
+    iter_selected_episode_arrays,
     parse_episode_selection,
+    video_offset_for_episode,
+    video_path_for_episode,
 )
 from app.readers.video import VideoImageSource
 
@@ -102,22 +104,6 @@ def _validate_low_dim(
         if not np.all(np.isfinite(values)):
             errors.append(f"{name} contains NaN or Inf")
     return errors
-
-
-def _video_offset(episode_row: dict[str, Any], camera_key: str | None) -> float:
-    if not camera_key:
-        return 0.0
-    normalized_camera = camera_key.replace(".", "_")
-    for key, value in episode_row.items():
-        normalized = key.replace("/", "_").replace(".", "_")
-        if normalized.endswith("from_timestamp") and (
-            not camera_key or normalized_camera in normalized
-        ):
-            try:
-                return float(value)
-            except (TypeError, ValueError):
-                return 0.0
-    return 0.0
 
 
 def _sample_indices(frame_count: int, fps: float | None, sample_fps: float) -> list[int]:
@@ -342,7 +328,7 @@ def run_qc(
         episode_table = pq.read_table(layout.episode_files[0])
         total_episodes = max(int(episode_table["episode_index"].to_pylist() or [0])) + 1
     selected = parse_episode_selection(episode_selection, total_episodes)
-    episode_rows, episodes, _ = load_selected_episodes(layout, selected)
+    episode_rows, episodes = iter_selected_episode_arrays(layout, selected)
     image_config = dict(profile.get("image", {}))
     resolved_static_hamming = int(
         static_hamming if static_hamming is not None else image_config.get("static_hamming", 4)
@@ -385,6 +371,7 @@ def run_qc(
 
     records: list[dict[str, Any]] = []
     image_rows: list[dict[str, Any]] = []
+    evidence_by_frame: dict[tuple[str | None, int], str | None] = {}
     issues: list[dict[str, Any]] = []
     motions: dict[str, Any] = {}
     output_path = Path(output_dir).expanduser().resolve()
@@ -420,7 +407,6 @@ def run_qc(
 
         camera_path = None
         if camera_key:
-            from app.readers.lerobot import video_path_for_episode
             camera_path = video_path_for_episode(layout, episode_rows[episode_index], camera_key)
         sampled = _sample_indices(
             int(arrays.get("timestamp_s", np.array([])).shape[0] or 0),
@@ -436,7 +422,10 @@ def run_qc(
                 width=camera_shape[1] if camera_shape else None,
                 height=camera_shape[0] if camera_shape else None,
             )
-            offset = _video_offset(episode_rows[episode_index], camera_key)
+            offset = video_offset_for_episode(
+                episode_rows[episode_index],
+                camera_key,
+            )
             metrics = []
             evidence_dir = (
                 output_path
@@ -472,6 +461,12 @@ def run_qc(
                     "phash": metric.phash,
                     "evidence_path": str(evidence_path) if evidence_path else None,
                 })
+                evidence_by_frame[
+                    (
+                        str(metadata.get("episode_id") or f"episode_{episode_index:06d}"),
+                        metric.frame_index,
+                    )
+                ] = str(evidence_path) if evidence_path else None
             episode_issues = evaluate_image_metrics(
                 metrics,
                 blur_percentile=resolved_blur_percentile,
@@ -490,14 +485,8 @@ def run_qc(
                 errors.append(str(issue["message"]))
                 issue = dict(issue)
                 issue["episode_id"] = metadata.get("episode_id")
-                issue["evidence_path"] = next(
-                    (
-                        row["evidence_path"]
-                        for row in reversed(image_rows)
-                        if row["episode_id"] == issue["episode_id"]
-                        and row["frame_index"] == issue["frame_index"]
-                    ),
-                    None,
+                issue["evidence_path"] = evidence_by_frame.get(
+                    (issue["episode_id"], int(issue["frame_index"]))
                 )
                 issues.append(issue)
 

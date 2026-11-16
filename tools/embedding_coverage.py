@@ -22,26 +22,12 @@ from app.embedding import (
 from app.readers.lerobot import (
     discover_layout,
     inspect_layout,
-    load_selected_episodes,
+    iter_selected_episode_arrays,
     parse_episode_selection,
+    video_offset_for_episode,
     video_path_for_episode,
 )
 from app.readers.video import VideoImageSource
-
-
-def _video_offset(episode_row: dict[str, Any], camera_key: str) -> float:
-    normalized_camera = camera_key.replace(".", "_")
-    for key, value in episode_row.items():
-        normalized = key.replace("/", "_").replace(".", "_")
-        if (
-            normalized.endswith("from_timestamp")
-            and normalized_camera in normalized
-        ):
-            try:
-                return float(value)
-            except (TypeError, ValueError):
-                return 0.0
-    return 0.0
 
 
 def run(
@@ -58,7 +44,7 @@ def run(
     inspect_report = inspect_layout(layout)
     total = int(layout.info.get("total_episodes") or 0)
     selected = parse_episode_selection(episode_selection, total)
-    episode_rows, episodes, _ = load_selected_episodes(layout, selected)
+    episode_rows, episodes = iter_selected_episode_arrays(layout, selected)
     feature = layout.info.get("features", {}).get(camera_key, {})
     shape = feature.get("shape", [])
     spatial = sorted(map(int, shape[:3]))[-2:] if len(shape) >= 2 else []
@@ -92,7 +78,7 @@ def run(
             continue
         chosen = np.linspace(0, frame_count - 1, frames_per_episode, dtype=int)
         episode_descriptors: list[np.ndarray] = []
-        offset = _video_offset(episode_rows[index], camera_key)
+        offset = video_offset_for_episode(episode_rows[index], camera_key)
         for frame_index in chosen:
             timestamp = float(episode.arrays["timestamp_s"][frame_index])
             frame = source.frame_at(offset + timestamp)
