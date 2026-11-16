@@ -19,9 +19,12 @@
   "image": {
     "enabled": true,
     "sample_fps": 1.0,
-    "blur_percentile": 5.0,
-    "static_hamming": 4,
+    "blur_percentile": 2.0,
+    "blur_broad_percentile": 5.0,
+    "static_hamming": 2,
+    "static_broad_hamming": 4,
     "freeze_hamming": 2,
-    "freeze_motion_quantile": 50.0
+    "freeze_motion_quantile": 50.0,
+    "threshold_policy_source": "120-row human gold set, 2026-11-16"
   }
 }

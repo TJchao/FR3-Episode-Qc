@@ -19,6 +19,8 @@
 - Narrowed gold-set reporting to precision, FPR estimate, review completion, and automation coverage; recall and F1 remain null when false negatives are not covered by the sampling design.
 - Added a reusable local HTML gold-set reviewer with previous/current frames, filters, notes, keyboard shortcuts, localStorage progress, CSV import, and CSV export.
 - Added source-count-weighted FPR estimation and reusable blur/static threshold calibration against reviewed gold-set labels.
+- Applied the reviewed Unitree thresholds (`blur P2`, `static Hamming 2`) with broad P5/Hamming-4 sensitivity bands.
+- Expanded handcrafted visual coverage and duplicate grouping to 86 episodes and added connected-component duplicate-cluster reports.
 - Added tests for profiles, image boundaries, motion statistics, LeRobot loading, video decoding, and fatal-image release gating.
 
 ## v0.3.0 - 2026-11-04

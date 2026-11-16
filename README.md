@@ -177,6 +177,7 @@ python -m tools.embedding_coverage path/to/lerobot_dataset \
 ```
 
 Outputs include episode embeddings, frame-level sampling records, original-space kNN density, cross-episode duplicate candidates, and a PCA SVG. PCA is visualization only; coverage density is computed in the original embedding space. The similarity threshold is uncalibrated until reviewed pairs are available.
+The report also writes connected duplicate-candidate groups at 0.98, 0.99, and 0.995 similarity thresholds. These groups are review candidates, not automatic deletion decisions.
 
 ### Dataset Profile
 
@@ -194,6 +195,7 @@ python -m tools.profile_dataset path/to/lerobot_dataset \
 ```
 
 The profile reports `rules_evaluated` and `rules_skipped`. A passing episode means that executable rules passed; rules whose required source field is missing are disclosed as skipped rather than treated as implicitly passed. The profile also reports low-dimensional, image, embedding, and gold-set coverage separately.
+The Unitree G1 profile uses the reviewed gold-set-calibrated defaults of blur P2 and static pHash Hamming 2. P5 and Hamming 4 remain broad sensitivity bands in the summary.
 
 Required `metadata.json` fields:
 

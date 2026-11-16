@@ -239,6 +239,12 @@ The pairwise similarity range is 0.856672-0.981875; the closest pair misses the 
 A PyArrow streaming path was added so all 301 episodes / 281196 frames can be profiled without converting every row to Python. The full low-dimensional profile completed in about 2.7 seconds and reported 301/301 passed. The output combines quality, frame and duration distributions, grouped motion statistics, image metrics, embedding coverage, and gold-set review status.
 The report explicitly distinguishes executed rules from skipped rules. Six low-dimensional rules were executable and four were skipped because the source format lacked `camera_age_ms`, `robot_time_ns`, `rgb_frame_count`, and `depth_frame_count`. Thus 301/301 passed means executable rules passed, not that missing dimensions were implicitly validated.
 
+### P1.3: apply the calibration and expand visual coverage
+
+The reviewed thresholds were applied to the full locally available 86-episode image subset. Rule hits fell from 980 to 545, and unique flagged frames fell from 855 to 423. Static high-confidence Hamming-2 hits were 338; the broad Hamming-4 band had 684 hits. This converts the gold-set finding into a measurable review-work reduction.
+
+Visual coverage was expanded from 10 to 86 episodes using six sampled frames per episode. The 3,655 pairwise similarities ranged from 0.796085 to 0.991590. Connected duplicate grouping found two 0.99 groups involving four episodes, and a broad 0.98 graph with seven components covering 61 episodes. These are redundancy and homogeneity signals, not automatic deletion decisions.
+
 ### 7. OpenCV image writing failed on a non-ASCII Windows path
 
 `cv2.imwrite` failed when the temporary path contained Chinese characters. The fix uses `cv2.imencode` followed by `Path.write_bytes`, which avoids OpenCV's path encoding limitation while preserving the same JPEG output.

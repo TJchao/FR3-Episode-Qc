@@ -220,6 +220,10 @@ def test_black_frame_is_fatal_and_blocks_release_gate(tmp_path: Path) -> None:
     assert summary["failed"] == 1
     assert summary["severity_counts"]["fatal"] == 1
     assert summary["image_samples"] >= 1
+    assert summary["threshold_policy"]["blur_primary_percentile"] == 2.0
+    assert summary["threshold_policy"]["static_primary_hamming"] == 2
+    assert "primary" in summary["blur_band_counts"]
+    assert "high_confidence" in summary["static_band_counts"]
     assert summary["image_rule_hits"] >= summary["unique_flagged_frames"]
     assert "image_static_candidate" in summary["image_rule_hit_counts"]
     assert set(summary["static_threshold_sweep"]) == {"2", "4", "6"}

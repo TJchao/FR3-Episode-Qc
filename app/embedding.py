@@ -182,6 +182,96 @@ def compute_coverage(
     return rows, pairs, summary
 
 
+def compute_duplicate_groups(
+    embeddings: np.ndarray,
+    episode_ids: list[str],
+    *,
+    thresholds: tuple[float, ...] = (0.98, 0.99, 0.995),
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Build connected duplicate-candidate groups at multiple thresholds."""
+    count = len(episode_ids)
+    if embeddings.shape[0] != count:
+        raise ValueError("embedding count and episode id count differ")
+    if count < 2:
+        raise ValueError("duplicate grouping needs at least two episodes")
+
+    norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+    normalized = embeddings / np.maximum(norms, 1e-8)
+    similarity = normalized @ normalized.T
+    rows: list[dict[str, Any]] = []
+    summary: dict[str, Any] = {
+        "thresholds": list(thresholds),
+        "boundary": (
+            "Groups are connected components of uncalibrated similarity edges. "
+            "They are review candidates, not deletion decisions."
+        ),
+    }
+
+    for threshold in thresholds:
+        parent = list(range(count))
+
+        def find(node: int) -> int:
+            while parent[node] != node:
+                parent[node] = parent[parent[node]]
+                node = parent[node]
+            return node
+
+        def union(left: int, right: int) -> None:
+            left_root = find(left)
+            right_root = find(right)
+            if left_root != right_root:
+                parent[right_root] = left_root
+
+        edge_count = 0
+        for left in range(count):
+            for right in range(left + 1, count):
+                if float(similarity[left, right]) >= threshold:
+                    union(left, right)
+                    edge_count += 1
+
+        components: dict[int, list[int]] = {}
+        for index in range(count):
+            components.setdefault(find(index), []).append(index)
+
+        group_index = 0
+        group_count = 0
+        duplicate_episode_count = 0
+        for members in sorted(
+            components.values(),
+            key=lambda values: (min(episode_ids[index] for index in values), len(values)),
+        ):
+            if len(members) < 2:
+                continue
+            group_index += 1
+            group_count += 1
+            duplicate_episode_count += len(members)
+            pairwise = [
+                float(similarity[left, right])
+                for offset, left in enumerate(members[:-1])
+                for right in members[offset + 1 :]
+            ]
+            rows.append({
+                "threshold": threshold,
+                "group_id": f"t{threshold:.3f}_g{group_index:03d}",
+                "group_size": len(members),
+                "member_episodes": ";".join(
+                    episode_ids[index] for index in members
+                ),
+                "mean_intra_similarity": round(float(np.mean(pairwise)), 6),
+                "min_intra_similarity": round(float(np.min(pairwise)), 6),
+                "max_intra_similarity": round(float(np.max(pairwise)), 6),
+                "suggested_action": "human_review",
+            })
+
+        summary[str(threshold)] = {
+            "edge_count": edge_count,
+            "group_count": group_count,
+            "duplicate_episode_count": duplicate_episode_count,
+        }
+
+    return rows, summary
+
+
 def pca_projection(embeddings: np.ndarray) -> tuple[np.ndarray, list[float]]:
     centered = embeddings - np.mean(embeddings, axis=0, keepdims=True)
     covariance = centered @ centered.T / max(len(centered) - 1, 1)

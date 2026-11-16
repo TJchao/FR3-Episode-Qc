@@ -130,7 +130,7 @@ def _sample_indices(frame_count: int, fps: float | None, sample_fps: float) -> l
 
 def _static_threshold_sweep(
     image_rows: list[dict[str, Any]],
-    thresholds: tuple[int, ...] = (2, 4, 6),
+    thresholds: tuple[int, ...],
 ) -> dict[str, int]:
     by_episode: dict[Any, list[dict[str, Any]]] = {}
     for row in image_rows:
@@ -146,6 +146,26 @@ def _static_threshold_sweep(
     return counts
 
 
+def _blur_band_count(
+    image_rows: list[dict[str, Any]],
+    percentile: float,
+) -> int:
+    by_episode: dict[Any, list[dict[str, Any]]] = {}
+    for row in image_rows:
+        by_episode.setdefault(row["episode_id"], []).append(row)
+    count = 0
+    for rows in by_episode.values():
+        threshold = float(np.percentile(
+            [float(row["laplacian_variance"]) for row in rows],
+            percentile,
+        ))
+        count += sum(
+            float(row["laplacian_variance"]) < threshold
+            for row in rows
+        )
+    return count
+
+
 def _write_reports(
     records: list[dict[str, Any]],
     image_rows: list[dict[str, Any]],
@@ -155,6 +175,7 @@ def _write_reports(
     dataset_version: str,
     git_commit: str,
     threshold_sweep: dict[str, int],
+    threshold_policy: dict[str, Any],
 ) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
     created_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -255,6 +276,29 @@ def _write_reports(
         "unique_flagged_frames": unique_flagged_frames,
         "image_rule_hit_counts": dict(sorted(rule_counts.items())),
         "static_threshold_sweep": threshold_sweep,
+        "threshold_policy": threshold_policy,
+        "blur_band_counts": {
+            "primary": _blur_band_count(
+                image_rows,
+                float(threshold_policy["blur_primary_percentile"]),
+            ),
+            "broad": _blur_band_count(
+                image_rows,
+                float(threshold_policy["blur_broad_percentile"]),
+            ),
+        },
+        "static_band_counts": {
+            "high_confidence": threshold_sweep[
+                str(threshold_policy["static_primary_hamming"])
+            ],
+            "broad_only": (
+                threshold_sweep[str(threshold_policy["static_broad_hamming"])]
+                - threshold_sweep[str(threshold_policy["static_primary_hamming"])]
+            ),
+            "broad_total": threshold_sweep[
+                str(threshold_policy["static_broad_hamming"])
+            ],
+        },
         "rule_interpretation": {
             "image_blur": "relative percentile rule hit; not an absolute defect claim",
             "image_static_candidate": "adjacent sampled frames are visually static; not cross-episode duplicate detection",
@@ -308,6 +352,26 @@ def run_qc(
         if blur_percentile is not None
         else image_config.get("blur_percentile", 5.0)
     )
+    resolved_broad_blur_percentile = float(
+        image_config.get("blur_broad_percentile", resolved_blur_percentile + 3.0)
+    )
+    resolved_broad_static_hamming = int(
+        image_config.get("static_broad_hamming", resolved_static_hamming + 2)
+    )
+    threshold_policy = {
+        "blur_primary_percentile": resolved_blur_percentile,
+        "blur_broad_percentile": resolved_broad_blur_percentile,
+        "static_primary_hamming": resolved_static_hamming,
+        "static_broad_hamming": resolved_broad_static_hamming,
+        "source": image_config.get(
+            "threshold_policy_source",
+            "default profile policy",
+        ),
+        "interpretation": (
+            "Primary thresholds drive review hits; broad thresholds are "
+            "reported for sensitivity only."
+        ),
+    }
 
     camera_shape = None
     if camera_key:
@@ -473,7 +537,15 @@ def run_qc(
         output_path,
         dataset_version,
         git_commit,
-        _static_threshold_sweep(image_rows),
+        _static_threshold_sweep(
+            image_rows,
+            tuple(sorted({
+                resolved_static_hamming,
+                resolved_broad_static_hamming,
+                6,
+            })),
+        ),
+        threshold_policy,
     )
     (output_path / "summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2) + "\n",

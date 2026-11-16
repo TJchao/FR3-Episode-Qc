@@ -14,6 +14,7 @@ from app.embedding import (
     EMBEDDING_METHOD,
     build_descriptor,
     compute_coverage,
+    compute_duplicate_groups,
     mean_episode_descriptor,
     pca_projection,
     write_pca_svg,
@@ -123,6 +124,10 @@ def run(
         k=k,
         near_duplicate_similarity=near_duplicate_similarity,
     )
+    duplicate_group_rows, duplicate_group_summary = compute_duplicate_groups(
+        embedding_matrix,
+        episode_ids,
+    )
     summary.update({
         "dataset_dir": str(Path(dataset_dir).resolve()),
         "camera_key": camera_key,
@@ -131,6 +136,7 @@ def run(
         "decoded_episodes": len(episode_ids),
         "skipped_episodes": skipped,
         "codebase_version": inspect_report.get("codebase_version"),
+        "duplicate_groups": duplicate_group_summary,
     })
 
     np.save(output_path / "embeddings.npy", embedding_matrix)
@@ -175,6 +181,23 @@ def run(
         )
         writer.writeheader()
         writer.writerows(duplicate_rows)
+    if duplicate_group_rows:
+        group_fields = [
+            "threshold",
+            "group_id",
+            "group_size",
+            "member_episodes",
+            "mean_intra_similarity",
+            "min_intra_similarity",
+            "max_intra_similarity",
+            "suggested_action",
+        ]
+        with (output_path / "visual_duplicate_groups.csv").open(
+            "w", encoding="utf-8-sig", newline=""
+        ) as file_handle:
+            writer = csv.DictWriter(file_handle, fieldnames=group_fields)
+            writer.writeheader()
+            writer.writerows(duplicate_group_rows)
 
     coordinates, explained = pca_projection(embedding_matrix)
     low_density_ids = {

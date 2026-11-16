@@ -10,6 +10,7 @@ import numpy as np
 from app.embedding import (
     build_descriptor,
     compute_coverage,
+    compute_duplicate_groups,
     mean_episode_descriptor,
     pca_projection,
 )
@@ -63,6 +64,24 @@ def test_coverage_detects_relative_low_density_and_duplicate_candidates() -> Non
     assert summary["pairwise_similarity"]["count"] == 3
     assert summary["pairwise_similarity"]["max"] == 1.0
     assert summary["closest_pair"]["episode_a"] == "ep0"
+
+
+def test_duplicate_groups_use_connected_components() -> None:
+    base = np.array([1.0, 0.0], dtype=np.float32)
+    another = np.array([0.0, 1.0], dtype=np.float32)
+    embeddings = np.stack([base, base, base, another])
+
+    rows, summary = compute_duplicate_groups(
+        embeddings,
+        ["ep0", "ep1", "ep2", "ep3"],
+        thresholds=(0.99,),
+    )
+
+    assert len(rows) == 1
+    assert rows[0]["group_size"] == 3
+    assert rows[0]["member_episodes"] == "ep0;ep1;ep2"
+    assert summary["0.99"]["edge_count"] == 3
+    assert summary["0.99"]["duplicate_episode_count"] == 3
 
 
 def test_pca_projection_returns_two_dimensions() -> None:
