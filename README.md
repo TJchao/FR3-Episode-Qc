@@ -4,503 +4,130 @@
 [![Release](https://img.shields.io/github/v/release/TJchao/FR3-Episode-Qc)](https://github.com/TJchao/FR3-Episode-Qc/releases)
 [![License](https://img.shields.io/github/license/TJchao/FR3-Episode-Qc)](LICENSE)
 
-Lightweight episode quality checks for FR3 robot-learning data.
+`fr3-episode-qc` is a reproducible quality, profiling, and release-gate toolkit for FR3 episodes and LeRobot v3 robot-learning datasets.
 
-This project turns the episode QC workflow used in a Franka Research3 grasping project into a small, reproducible CLI and HTTP service. It checks field completeness, temporal consistency, action/state dimensions, camera latency, RGB/Depth frame consistency, and stores each QC result in SQLite. The P0 upgrade also adds robot profiles, a LeRobot dataset inspector and reader, sampled image checks, and motion profiling.
+## Business Background
 
-The original robot dataset is not included. It contains lab data and is not approved for publication. This repository uses deterministic synthetic episodes that exercise every QC rule.
+Robot-learning datasets are expensive to collect and easy to corrupt silently: timestamps drift, camera frames lag, action semantics change, and repeated scenes increase storage without improving policy coverage. This project turns those operational risks into explicit checks, review queues, calibrated thresholds, and release decisions.
 
-This tool performs offline episode QC only; it does not train policies, run simulations, or evaluate robot models. Model evaluation lives in separate tooling.
+The original FR3 robot dataset is not included because it contains unpublished laboratory data. Deterministic synthetic fixtures exercise every QC rule, while the public Unitree G1 LeRobot dataset provides integration and reporting evidence.
 
-## Scope
+## Completed Capabilities
 
-Included:
+- FR3 NPZ episode QC: schema, timestamp monotonicity, NaN/Inf, state/action dimensions, camera-age P95, and RGB/Depth frame-count consistency.
+- Conservative repair: source episodes remain read-only; all-NaN action rows are cropped or split, and every repair writes a manifest.
+- LeRobot v3 support: dataset inspection, selected-episode loading, robot profiles, sampled video decoding, and per-episode reports.
+- Sampled image QC: black/white frames, exposure ratios, relative blur, adjacent-frame static candidates, and freeze candidates that combine visual stasis with robot-state motion.
+- Gold-set workflow: local HTML review, source-count-weighted precision/FPR reporting, and threshold calibration.
+- Visual coverage: dependency-free 216-D handcrafted episode embeddings, original-space kNN density, PCA visualization, and connected duplicate-candidate groups.
+- Dataset profiling: low-dimensional quality, image metrics, grouped motion statistics, coverage disclosures, and gold-set status.
+- Governance: SQLite history, CSV/Parquet outputs, DuckDB summaries, Markdown/HTML release reports, severity-aware release gates, Docker, and GitHub Actions.
 
-- Episode QC CLI and FastAPI service
-- Robot-specific profiles and LeRobot dataset inspection
-- Error severity classification and conservative action-frame repair
-- Sampled image checks for black/white frames, exposure, relative blur, adjacent-frame static candidates, and freeze candidates
-- Motion profiling for multi-dimensional humanoid state streams
-- SQLite QC history with `status` and `dataset_version` filtering
-- Batch QC reports in CSV and Parquet, plus DuckDB summaries
-- Dataset release report (Markdown/HTML) and a release gate with `--fail-on` severity
-- Docker Compose deployment and GitHub Actions CI
+## P1.3 Threshold Impact
 
-Not included:
+Both runs use episodes 0-85, the left-wrist camera, 1 fps sampling, and 2,806 sampled frames.
 
-- Real robot data
-- Distributed data processing
-- Production-grade lineage or data versioning
-- Message queues, Kubernetes, or a multi-node data platform
-- Automatic image repair or full image semantic understanding
+| Metric | P5 / Hamming 4 baseline | P2 / Hamming 2 calibrated | Change |
+|---|---:|---:|---:|
+| blur hits | 175 | 86 | -50.9% |
+| freeze hits | 121 | 121 | 0.0% |
+| static-candidate hits | 684 | 338 | -50.6% |
+| total rule hits | 980 | 545 | -44.4% |
+| unique flagged frames | 855 | 423 | -50.5% |
+| review-candidate rate | 34.93% | 19.42% | -15.51 pp |
 
-## Data Schema
-
-### FR3 NPZ Episodes
-
-Each episode is a directory containing:
+The calibrated policy came from a 120-row human gold set:
 
 ```text
-episode/
-  frames.npz
-  metadata.json
+review completion: 100%
+overall precision: 53.3333%
+weighted FPR estimate: 6.6404%
+recall: null
+F1: null
 ```
 
-`frames.npz` fields:
+Recall and F1 are intentionally null because the balanced hit/control sample does not cover all false negatives.
 
-| Field | Shape | Description |
-| --- | --- | --- |
-| `timestamp_s` | `(N,)` | Episode timestamps in seconds |
-| `robot_time_ns` | `(N,)` | Robot-side timestamps in nanoseconds |
-| `camera_time_ns` | `(N,)` | Camera timestamps in nanoseconds |
-| `camera_age_ms` | `(N,)` | Camera frame age at policy/control time |
-| `state` | `(N, 8)` | Robot state used by the policy |
-| `action` | `(N, 7)` | Robot action command |
+## Key Experimental Findings
 
-Optional fields reserved for future image repair:
+- The 301-episode low-dimensional profile passed all six executable rules. Four rules were skipped because LeRobot omitted `camera_age_ms`, `robot_time_ns`, `rgb_frame_count`, and `depth_frame_count`; skipped is not equivalent to passed.
+- Frame count has a clear long tail: min 666, mean 934.20598, p95 1131, max 6791. Rule success does not imply a healthy duration distribution.
+- Right-hand velocity_p95 exceeds left-arm velocity_p95 in 197/301 episodes, with a paired ratio p50 of 1.230204; humanoid motion should therefore be profiled by arm/hand groups.
+- The 86-episode embedding analysis covers 3,655 episode pairs. Similarity ranges from 0.796085 to 0.991590, indicating strong same-task visual homogeneity.
+- At similarity 0.99 there are two duplicate-candidate groups involving four episodes; at 0.98 there are seven connected groups involving 61 episodes. These are review candidates, not automatic deletions.
 
-| Field | Shape | Description |
-| --- | --- | --- |
-| `rgb_timestamps_ns` | `(N,)` | Acquisition timestamps for RGB frames |
-| `depth_timestamps_ns` | `(N,)` | Acquisition timestamps for Depth frames |
-
-The current repair implementation does not copy or synthesize image frames. These fields document the timestamp contract that a future nearest-frame image repair would use.
-
-### LeRobot Datasets
-
-The LeRobot path is dataset-level rather than a drop-in replacement for the FR3 episode format. Inspect the actual schema first:
+## QuickStart
 
 ```bash
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+pytest
+
+# FR3 NPZ episode QC
+python -m app.qc examples/ep_valid
+
+# Inspect a LeRobot v3 dataset before selecting a profile
 python -m tools.inspect_lerobot path/to/lerobot_dataset
-```
 
-The inspector reports episode count, frame count, FPS, feature shapes, Parquet columns, and video keys. Run low-dimensional, sampled-image, and motion QC with:
-
-```bash
+# Low-dimensional QC, sampled image QC, motion profiling, and reports
 python -m tools.qc_lerobot path/to/lerobot_dataset \
   --profile unitree_g1 \
   --episodes 0-5 \
   --camera-key observation.images.cam_left_wrist \
   --sample-fps 1 \
   --save-evidence \
-  --output reports/unitree_g1 \
-  --dataset-version unitree-v1
-```
+  --output reports/unitree_g1
 
-Outputs include:
-
-```text
-inspect_report.json
-qc_results.csv
-qc_results.parquet
-image_metrics.parquet
-image_rule_hits.csv
-image_review.csv
-motion_profile.json
-summary.json
-```
-
-`image_review.csv` is a lightweight gold-set calibration input. Relative rules such as blur and adjacent-frame pHash similarity always select a tail from the current batch, so a reviewer should fill `human_label`, `is_true_positive`, and `note` before treating those thresholds as production-ready.
-
-The `image_static_candidate` rule compares consecutive sampled frames, typically one second apart. It identifies visually static intervals, not cross-episode duplicate data. Cross-episode duplicate detection requires separate episode-level embeddings or representative-frame signatures.
-
-### Video Decoding Boundary
-
-OpenCV is used first for seek-based single-frame decoding. If decoding fails, for example for an AV1 stream unsupported by the local OpenCV build, the reader tries an installed `ffmpeg` executable. If neither decoder is available, image QC records an `image_decoder_unavailable` warning rather than silently reporting that the frames passed.
-
-The tool does not load a complete video into memory and does not synthesize missing image frames.
-
-## Batch Analysis
-
-### Gold Set
-
-Build a review template from image metrics and rule hits:
-
-```bash
+# Build a review queue and a local HTML reviewer
 python -m tools.build_gold_set \
-  --image-metrics reports/unitree/image_metrics.parquet \
-  --image-hits reports/unitree/image_rule_hits.csv \
-  --output reports/unitree/gold_set.csv \
-  --metadata reports/unitree/gold_set_meta.json \
-  --max-hits-per-rule 20 \
-  --max-controls-per-rule 20
-```
+  --image-metrics reports/unitree_g1/image_metrics.parquet \
+  --image-hits reports/unitree_g1/image_rule_hits.csv \
+  --output reports/unitree_g1/gold_set.csv \
+  --metadata reports/unitree_g1/gold_set_meta.json
 
-Fill either `human_label` or `is_true_positive` in `gold_set.csv`, then evaluate:
-
-```bash
-python -m tools.evaluate_gold_set \
-  --gold-set reports/unitree/gold_set.csv \
-  --metadata reports/unitree/gold_set_meta.json \
-  --output-json reports/unitree/gold_set_metrics.json \
-  --output-md reports/unitree/gold_set_metrics.md
-```
-
-The evaluator reports precision, an FPR estimate, reviewed sample counts, review completion, and policy-based automation coverage. Recall and F1 remain null because the sampling design does not cover false negatives. If human labels are absent, precision and FPR are also null rather than fabricated.
-
-Threshold calibration is available after review:
-
-```bash
-python -m tools.calibrate_image_rules \
-  --gold-set reports/unitree/gold_set_reviewed.csv \
-  --image-metrics reports/unitree/image_metrics.parquet \
-  --output-json reports/unitree/threshold_calibration.json \
-  --output-md reports/unitree/threshold_calibration.md
-```
-
-### Gold Set Review
-
-Generate a dependency-free local HTML reviewer with current and previous sampled frames:
-
-```bash
 python -m tools.build_gold_set_review \
-  --gold-set reports/unitree/gold_set.csv \
-  --image-metrics reports/unitree/image_metrics.parquet \
-  --image-hits reports/unitree/image_rule_hits.csv \
-  --output-dir reports/unitree/gold_set_review
+  --gold-set reports/unitree_g1/gold_set.csv \
+  --image-metrics reports/unitree_g1/image_metrics.parquet \
+  --image-hits reports/unitree_g1/image_rule_hits.csv \
+  --output-dir reports/unitree_g1/gold_set_review
 ```
 
-Open `gold_set_review.html` in a browser. Blur rows are reviewed against the current frame; static-candidate and freeze rows require comparing the previous sampled frame with the current frame. Decisions persist in browser `localStorage`, and the **Export CSV** button writes `gold_set_reviewed.csv` with `human_label`, `is_true_positive`, and `note`. Keyboard shortcuts are `1` for rule成立, `2` for rule不成立, `3` for uncertain, and `n` / `p` for next / previous unreviewed item.
+After reviewing and exporting `gold_set_reviewed.csv`, evaluate it with `python -m tools.evaluate_gold_set` and calibrate thresholds with `python -m tools.calibrate_image_rules`.
 
-### Embedding Coverage
+## Documentation
 
-The lightweight coverage prototype uses `handcrafted_visual_v1`: HSV color, DCT layout, gradient orientation, and pHash information are concatenated into a 216-D L2-normalized episode embedding. It does not require PyTorch or a downloaded vision model.
+- [P1.3 calibrated thresholds and coverage](docs/unitree_g1_p13_calibrated_thresholds_and_coverage.md)
+- [P1.3 embedding coverage report](docs/unitree_embedding_0_85_p13_report.md)
+- [P1.3 dataset profile report](docs/unitree_dataset_profile_p13_report.md)
+- [P1 gold-set, embedding, and profiling report](docs/unitree_g1_p1_gold_embedding_profile.md)
+- [P0 Unitree validation report](docs/unitree_g1_p0_validation.md)
+- [Engineering and upgrade narrative](docs/qc_p0_upgrade_narrative.md)
 
-```bash
-python -m tools.embedding_coverage path/to/lerobot_dataset \
-  --episodes 0-9 \
-  --camera-key observation.images.cam_left_wrist \
-  --frames-per-episode 6 \
-  --k 3 \
-  --near-duplicate-similarity 0.99 \
-  --output reports/unitree_embedding
-```
+## Scope And Limitations
 
-Outputs include episode embeddings, frame-level sampling records, original-space kNN density, cross-episode duplicate candidates, and a PCA SVG. PCA is visualization only; coverage density is computed in the original embedding space. The similarity threshold is uncalibrated until reviewed pairs are available.
-The report also writes connected duplicate-candidate groups at 0.98, 0.99, and 0.995 similarity thresholds. These groups are review candidates, not automatic deletion decisions.
+Included:
 
-### Dataset Profile
+- Offline and near-line QC; no robot control and no policy training.
+- FR3 NPZ and LeRobot v3 input formats.
+- Sampled image QC and human gold-set calibration.
+- Public-dataset validation evidence.
+- Release reports and severity-aware gates.
 
-Aggregate low-dimensional QC, motion groups, sampled image metrics, embedding coverage, and gold-set status:
+Not included:
 
-```bash
-python -m tools.profile_dataset path/to/lerobot_dataset \
-  --profile unitree_g1 \
-  --episodes 0-300 \
-  --image-metrics reports/unitree/image_metrics.parquet \
-  --image-hits reports/unitree/image_rule_hits.csv \
-  --embedding-summary reports/unitree_embedding/coverage_summary.json \
-  --gold-set-metrics reports/unitree/gold_set_metrics.json \
-  --output-dir reports/unitree_profile
-```
+- The original FR3 robot dataset or other proprietary data.
+- Distributed processing, multi-node orchestration, or a production data platform.
+- Full-image semantic understanding, automatic image repair, or automatic duplicate deletion.
+- Full 301-episode image and embedding coverage; the current video subset covers 86/301 episodes.
+- Claims of population recall or calibrated production deletion thresholds.
 
-The profile reports `rules_evaluated` and `rules_skipped`. A passing episode means that executable rules passed; rules whose required source field is missing are disclosed as skipped rather than treated as implicitly passed. The profile also reports low-dimensional, image, embedding, and gold-set coverage separately.
-The Unitree G1 profile uses the reviewed gold-set-calibrated defaults of blur P2 and static pHash Hamming 2. P5 and Hamming 4 remain broad sensitivity bands in the summary.
+## Roadmap
 
-Required `metadata.json` fields:
+1. Complete left-wrist image and embedding coverage for all 301 Unitree episodes.
+2. Add rule-based task segmentation, grouped train/validation/test splitting, and leakage checks.
+3. Add an idempotent batch runner with stage states, retries, resume, and processing-time monitoring.
 
-```json
-{
-  "episode_id": "ep_valid",
-  "frame_count": 128,
-  "fps": 10,
-  "state_dim": 8,
-  "action_dim": 7,
-  "rgb_frame_count": 128,
-  "depth_frame_count": 128,
-  "schema_version": "fr3-episode-v1"
-}
-```
+## Technology Stack
 
-## QC Rules
-
-An episode fails when any of the following is true:
-
-- `frames.npz` or `metadata.json` is missing
-- A required NPZ or metadata field is missing
-- Required fields have different first-dimension lengths
-- `robot_time_ns` or `timestamp_s` is not strictly increasing
-- Any numeric field contains NaN or Inf
-- `state` is not `(N, 8)`
-- `action` is not `(N, 7)`
-- `camera_age_ms` P95 is 50 ms or higher
-- `metadata.frame_count` does not match the actual frame count
-- `rgb_frame_count` or `depth_frame_count` does not match the actual frame count
-- Metadata dimensions or schema version do not match the expected schema
-
-The report includes:
-
-```json
-{
-  "episode_id": "ep_valid",
-  "status": "passed",
-  "errors": [],
-  "warnings": [],
-  "error_details": [],
-  "severity": "none",
-  "frame_count": 128,
-  "camera_age_p95_ms": 31.917,
-  "episode_hash": "sha256:..."
-}
-```
-
-`episode_hash` is a combined SHA-256 hash of `frames.npz` and `metadata.json`, allowing the same episode content to be recognized across QC runs.
-
-### Severity Classification
-
-Each error receives a stable code and one of three severity levels:
-
-- `fatal`: schema, shape, non-finite value, timestamp ordering, or path errors that make an episode unsafe for training.
-- `repairable`: all-NaN action rows, or frame/image count mismatches that require controlled repair or manual review.
-- `warning`: camera-age P95 between 50 and 100 ms. The episode still fails, but the issue is less severe than a schema or timestamp break.
-
-The overall `severity` is the highest severity present. A passed episode has `severity: "none"`.
-
-## Architecture
-
-```mermaid
-flowchart LR
-    A[Episode directory] --> B[QC core]
-    B --> C[JSON report]
-    B --> D[(SQLite history)]
-    E[FastAPI] --> B
-    E --> D
-    A --> H[Batch CLI]
-    H --> I[CSV report]
-    H --> J[Parquet report]
-    J --> K[DuckDB summary]
-    J --> R[Release report: Markdown/HTML]
-    J --> G[Release gate: release_gate.json]
-    A --> L[Repair CLI]
-    L --> M[.repaired parts]
-    L --> N[repair_manifest.json]
-    M --> B
-    F[Docker Compose] --> E
-    G[Synthetic examples] --> A
-```
-
-## Data Synchronization Mechanism
-
-Robot-learning episodes are normalized after several upstream streams are recorded. Camera, robot state, operator input, and the data recorder can run at different rates, so the useful episode boundary is not each producer's native rate; it is the aligned observation-action stream used by training and deployment.
-
-This project focuses on validating that normalized stream:
-
-- `timestamp_s` and `robot_time_ns` must be strictly increasing, exposing dropped, duplicated, or incorrectly ordered records.
-- `camera_age_ms` measures how old the selected camera observation is at the policy/control time. Its P95 must stay below the configured threshold, which catches stale images without requiring every camera frame to arrive at exactly the same time as the robot state.
-- RGB and Depth frame counts must match the episode frame count, catching partial writes or camera pipeline failures.
-- State and action dimensions must match the configured schema, preventing silent train/deploy interface changes.
-
-The synthetic examples use a small 10 Hz normalized episode stream for demonstration. The camera-age threshold and schema dimensions are shared between data generation and validation, so test data and QC rules cannot drift apart.
-
-## Local Setup
-
-```bash
-python -m venv .venv
-
-# Linux/macOS
-source .venv/bin/activate
-
-# Windows PowerShell
-.venv\Scripts\Activate.ps1
-
-pip install -r requirements.txt
-```
-
-Generate synthetic examples:
-
-```bash
-python scripts/make_examples.py
-```
-
-## CLI
-
-```bash
-python -m app.qc examples/ep_valid
-python -m app.qc examples/ep_camera_age_p95
-```
-
-The command prints a JSON report. It exits with code `0` when the episode passes and `1` when it fails, so it can be used in a shell pipeline.
-
-To restrict episode paths to a specific root:
-
-```bash
-python -m app.qc examples/ep_valid --allowed-root examples
-```
-
-Check every episode under a directory and write CSV and Parquet reports:
-
-```bash
-python -m app.qc_batch examples \
-  --csv-output reports/qc_results.csv \
-  --parquet-output reports/qc_results.parquet \
-  --dataset-version synthetic-v1 \
-  --git-commit "$(git rev-parse --short HEAD)"
-```
-
-The batch command prints the number of checked, passed, and failed episodes plus a structured count of each error type. Add `--fail-on-error` when it is used as a pipeline gate.
-
-## Conservative Repair
-
-The repair CLI handles one narrow failure mode: an action row in which all seven dimensions are NaN. This represents a missing action label. Partial NaN, Inf, malformed action shapes, and missing image data are not repaired.
-
-```bash
-python -m app.repair path/to/episode
-```
-
-The source episode is read-only. Output is written to `<episode>.repaired/` and contains one or more `part_###` episode directories plus `repair_manifest.json`.
-
-Repair rules:
-
-- Missing action frames at the start or end are cropped.
-- A missing action frame in the middle splits the episode into two parts, avoiding a 200 ms timestamp hole being presented as two adjacent 100 ms steps.
-- No action or state values are interpolated.
-- Each repaired part is rerun through QC before the manifest is marked as passed.
-- The manifest records the source hash, repaired hashes, repair policy, dropped frame indices, timestamp deltas, and split points.
-
-A sanitized example manifest is available at [`examples/repair_manifest_sample.json`](examples/repair_manifest_sample.json).
-
-Summarize the Parquet report with DuckDB:
-
-```bash
-python -m app.stats reports/qc_results.parquet
-```
-
-The summary includes status counts, error-type counts, camera-age statistics by status, and dataset-version counts.
-
-## Dataset Release
-
-Turn a batch QC output into a publishable dataset report and an explicit release decision. Both commands accept `qc_results.parquet` or the SQLite history database (`db/qc_history.db`). A source must resolve to one dataset version and one git commit; when SQLite contains multiple versions, pass `--dataset-version` to select the release snapshot. For a versioned history, the loader keeps the latest QC run per episode.
-
-```bash
-# Markdown report, plus a self-contained HTML page
-python -m app.release report reports/qc_results.parquet --html
-
-# Link repair manifests into the report (optional)
-python -m app.release report reports/qc_results.parquet \
-  --repair-manifest reports/repair_manifest.json
-```
-
-The report includes the total/passed/failed counts, pass rate, fatal/repairable/warning distribution, top error types, camera-age P50/P95/P99, frame-count statistics, a per-episode list of failed episodes, and linked repair manifests.
-
-![Dataset QC report](docs/qc_report_preview.png)
-
-The release gate decides whether a dataset version may enter training:
-
-```bash
-python -m app.release gate reports/qc_results.parquet \
-  --fail-on fatal --fail-on repairable \
-  --output reports/release_gate.json
-```
-
-`--fail-on` is repeatable; each listed severity blocks the release when present, and the default is `fatal`. The gate writes `release_gate.json` with `dataset_version`, source and release git commit, `passed`, severity `blocked_by`, lineage `blocking_reasons`, and `generated_at`. Empty input, mixed versions, mixed commits, lineage overrides that disagree with the source, and invalid severity values fail closed. It exits with code `1` when the release is blocked, so it can be used as a CI gate for dataset releases. CI uploads the generated report and gate as workflow artifacts.
-
-## API
-
-Start the development server:
-
-```bash
-uvicorn app.main:app --reload
-```
-
-Interactive documentation is available at:
-
-```text
-http://127.0.0.1:8000/docs
-```
-
-Check one episode:
-
-```bash
-curl -X POST http://127.0.0.1:8000/qc \
-  -H "Content-Type: application/json" \
-  -d "{\"episode_path\": \"examples/ep_valid\"}"
-```
-
-Read recent QC runs:
-
-```bash
-curl http://127.0.0.1:8000/runs
-```
-
-Filter runs by status, severity, or dataset version:
-
-```bash
-curl "http://127.0.0.1:8000/runs?status=failed"
-curl "http://127.0.0.1:8000/runs?dataset_version=synthetic-v1"
-curl "http://127.0.0.1:8000/runs?status=failed&dataset_version=synthetic-v1"
-curl "http://127.0.0.1:8000/runs?severity=repairable"
-```
-
-Read one run:
-
-```bash
-curl http://127.0.0.1:8000/runs/1
-```
-
-The service restricts episode access to `QC_ALLOWED_ROOT` when that environment variable is set. It uses `QC_DB_PATH` for the SQLite database when provided.
-
-## Docker
-
-```bash
-docker compose up --build
-```
-
-The service then listens on:
-
-```text
-http://127.0.0.1:8000
-```
-
-In Docker Compose, synthetic episodes are mounted read-only at `/data`, and SQLite history is persisted in a named volume.
-
-Example request inside Docker:
-
-```bash
-curl -X POST http://127.0.0.1:8000/qc \
-  -H "Content-Type: application/json" \
-  -d "{\"episode_path\": \"/data/ep_valid\"}"
-```
-
-## Tests
-
-```bash
-pytest
-```
-
-The tests cover:
-
-- The valid synthetic episode
-- Each isolated invalid episode
-- Severity classification for fatal, repairable, and warning errors
-- Boundary cropping and middle splitting for all-NaN action rows
-- Repair manifests, source hashes, repaired hashes, and post-repair QC
-- Batch QC, structured error classification, CSV, and Parquet outputs
-- DuckDB summaries over generated Parquet reports
-- Dataset release report (Markdown/HTML) and release gate thresholds
-- Release snapshots with unique dataset versions, git commits, and episode IDs
-- Path-root restrictions
-- API health and QC endpoints
-- API filtering by status and dataset version
-- Request validation and HTTP error codes
-- SQLite history insertion and lookup
-- Robot profile loading and schema validation
-- LeRobot dataset inspection and selected-episode loading
-- Sampled image-rule boundaries
-- Motion statistics for short and partially invalid episodes
-- MP4 single-frame seek and fatal-image release gating
-
-GitHub Actions runs the Python tests and builds the Docker image on every push and pull request.
-
-## Design Notes
-
-- The QC threshold and dimensions are shared between data generation and validation, avoiding drift between test data and checks.
-- Paths are resolved before access and constrained to an allowed root.
-- NPZ loading disables pickle for safety.
-- SQLite is intentionally minimal; it records report history without introducing an ORM or a separate service.
-- SQLite is suitable for this single-service, small-batch laboratory workflow. Under many concurrent writers, its database-level write lock can become a bottleneck; a production multi-worker deployment would use PostgreSQL or another external database service.
-- Parquet and DuckDB provide a small, local analytics path without introducing a distributed processing framework.
-- The repository is a small engineering demonstration, not a claim of large-scale robot-data infrastructure.
-
-## License
-
-This project is released under the [MIT License](LICENSE).
+Python, NumPy, OpenCV, PyArrow/Parquet, DuckDB, SQLite, FastAPI, pytest, Docker, and GitHub Actions.

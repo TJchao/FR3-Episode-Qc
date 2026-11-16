@@ -21,6 +21,8 @@
 - Added source-count-weighted FPR estimation and reusable blur/static threshold calibration against reviewed gold-set labels.
 - Applied the reviewed Unitree thresholds (`blur P2`, `static Hamming 2`) with broad P5/Hamming-4 sensitivity bands.
 - Expanded handcrafted visual coverage and duplicate grouping to 86 episodes and added connected-component duplicate-cluster reports.
+- Consolidated LeRobot loading on the Arrow-backed reader, preserving explicit errors for missing episode data.
+- Rewrote the public README around completed capabilities, calibrated threshold results, experimental findings, limitations, and a three-item roadmap.
 - Added tests for profiles, image boundaries, motion statistics, LeRobot loading, video decoding, and fatal-image release gating.
 
 ## v0.3.0 - 2026-11-04
